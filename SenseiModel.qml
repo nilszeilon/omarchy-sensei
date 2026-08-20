@@ -5,7 +5,8 @@ Item {
   id: root
   visible: false
 
-  property var days: []
+  property var mouseDays: []
+  property var shortcutDays: []
   property int maxCount: 0
   property var hint: null
   property bool paused: false
@@ -18,7 +19,8 @@ Item {
   function applySnapshot(output) {
     try {
       var parsed = JSON.parse(String(output || "{}"))
-      days = parsed.days || []
+      mouseDays = parsed.mouseDays || []
+      shortcutDays = parsed.shortcutDays || []
       maxCount = Number(parsed.maxCount || 0)
       hint = parsed.hint || null
       paused = parsed.paused === true

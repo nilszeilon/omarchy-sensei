@@ -2,7 +2,7 @@
 
 Omarchy Sensei is planned as two cooperating pieces:
 
-1. A Quickshell bar widget and panel containing the keyboard-first activity graph and one lesson.
+1. A Quickshell bar widget and panel containing aligned seven-day mouse/menu and shortcut graphs plus one lesson.
 2. A small local companion CLI for normalizing semantic events, matching actions to shortcuts, and persisting local history.
 
 ## Automatic observation
@@ -40,4 +40,4 @@ The MVP should prefer explicit Omarchy and Hyprland event sources over global in
 
 ## Storage
 
-The first release uses a private JSON Lines event log so the complete data path stays inspectable. The graph counts only actions triggered by shortcuts. The lesson is the menu or mouse action with the largest gap between slow and shortcut uses; it appears after the first observed slow use, and five shortcut uses marks it learned. Observation can be paused, resumed, inspected, or cleared from the CLI.
+The first release uses a private JSON Lines event log so the complete data path stays inspectable. Two aligned graphs compare recognized menu/mouse actions and Omarchy shortcuts over the last seven days on one shared scale. The lesson is the menu or mouse action with the largest gap between slow and shortcut uses; it appears after the first observed slow use, and five shortcut uses marks it learned. Observation can be paused, resumed, inspected, or cleared from the CLI.

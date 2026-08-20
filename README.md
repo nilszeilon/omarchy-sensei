@@ -21,7 +21,7 @@ Sensei automatically observes activated Omarchy keyboard bindings and a curated 
 2. Match it to an existing Omarchy shortcut such as `SUPER + B`.
 3. Show the highest-impact unlearned shortcut in the panel.
 4. Detect adoption and record the shortcut as learned.
-5. Show a GitHub-style graph of keyboard-first activity.
+5. Compare recognized mouse/menu actions with Omarchy shortcuts across the last seven days.
 6. For actions without shortcuts, create a reviewable, privacy-safe context bundle that an agent can use to propose one.
 
 The panel is keyboard navigable: use the arrow keys or `h/j/k/l` to inspect days, `Tab`/`Shift+Tab` to switch bar panels, and `Esc` to close.

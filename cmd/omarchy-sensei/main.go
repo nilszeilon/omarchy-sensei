@@ -38,10 +38,11 @@ type Hint struct {
 }
 
 type Snapshot struct {
-	Days     []Day `json:"days"`
-	MaxCount int   `json:"maxCount"`
-	Hint     *Hint `json:"hint"`
-	Paused   bool  `json:"paused"`
+	MouseDays    []Day `json:"mouseDays"`
+	ShortcutDays []Day `json:"shortcutDays"`
+	MaxCount     int   `json:"maxCount"`
+	Hint         *Hint `json:"hint"`
+	Paused       bool  `json:"paused"`
 }
 
 func main() {
@@ -294,10 +295,9 @@ func printStatus(paths Paths) {
 func buildSnapshot(events []Event, now time.Time) Snapshot {
 	localNow := now.In(time.Local)
 	today := dayStart(localNow)
-	weekStart := today.AddDate(0, 0, -int(today.Weekday()))
-	start := weekStart.AddDate(0, 0, -52*7)
-	end := start.AddDate(0, 0, 370)
-	counts := map[string]int{}
+	start := today.AddDate(0, 0, -6)
+	shortcutCounts := map[string]int{}
+	mouseCounts := map[string]int{}
 	type score struct {
 		hint Hint
 	}
@@ -305,8 +305,12 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 
 	for _, event := range events {
 		date := event.OccurredAt.In(time.Local).Format("2006-01-02")
-		if event.Trigger == "shortcut" && !event.OccurredAt.Before(start) {
-			counts[date]++
+		if !event.OccurredAt.Before(start) {
+			if event.Trigger == "shortcut" {
+				shortcutCounts[date]++
+			} else if event.Trigger == "menu" || event.Trigger == "mouse" {
+				mouseCounts[date]++
+			}
 		}
 		entry := scores[event.Action]
 		if entry == nil {
@@ -323,17 +327,21 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		}
 	}
 
-	result := Snapshot{Days: make([]Day, 0, 371)}
-	for day := start; !day.After(end); day = day.AddDate(0, 0, 1) {
-		if day.After(today) {
-			result.Days = append(result.Days, Day{})
-			continue
-		}
+	result := Snapshot{
+		MouseDays:    make([]Day, 0, 7),
+		ShortcutDays: make([]Day, 0, 7),
+	}
+	for day := start; !day.After(today); day = day.AddDate(0, 0, 1) {
 		date := day.Format("2006-01-02")
-		count := counts[date]
-		result.Days = append(result.Days, Day{Date: date, Count: count, Today: day.Equal(today)})
-		if count > result.MaxCount {
-			result.MaxCount = count
+		mouseCount := mouseCounts[date]
+		shortcutCount := shortcutCounts[date]
+		result.MouseDays = append(result.MouseDays, Day{Date: date, Count: mouseCount, Today: day.Equal(today)})
+		result.ShortcutDays = append(result.ShortcutDays, Day{Date: date, Count: shortcutCount, Today: day.Equal(today)})
+		if mouseCount > result.MaxCount {
+			result.MaxCount = mouseCount
+		}
+		if shortcutCount > result.MaxCount {
+			result.MaxCount = shortcutCount
 		}
 	}
 

@@ -23,13 +23,13 @@ func TestBuildSnapshotChoosesWorstUnlearnedAction(t *testing.T) {
 	if result.Hint.Avoided != 6 {
 		t.Fatalf("expected score 6, got %d", result.Hint.Avoided)
 	}
-	if got := countForDay(result, "2026-08-20"); got != 1 {
+	if got := countForDay(result.ShortcutDays, "2026-08-20"); got != 1 {
 		t.Fatalf("expected one shortcut today, got %d", got)
 	}
 }
 
-func countForDay(snapshot Snapshot, date string) int {
-	for _, day := range snapshot.Days {
+func countForDay(days []Day, date string) int {
+	for _, day := range days {
 		if day.Date == date {
 			return day.Count
 		}
@@ -60,7 +60,7 @@ func TestBuildSnapshotMarksToday(t *testing.T) {
 	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
 	result := buildSnapshot(nil, now)
 
-	for _, day := range result.Days {
+	for _, day := range result.ShortcutDays {
 		if day.Date == "2026-08-20" {
 			if !day.Today {
 				t.Fatal("expected current day to be marked as today")
@@ -69,6 +69,28 @@ func TestBuildSnapshotMarksToday(t *testing.T) {
 		}
 	}
 	t.Fatal("expected current day in snapshot")
+}
+
+func TestBuildSnapshotComparesLastSevenDays(t *testing.T) {
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
+	events := []Event{
+		{OccurredAt: now.AddDate(0, 0, -6), Action: "browser", Trigger: "menu"},
+		{OccurredAt: now.AddDate(0, 0, -6), Action: "terminal", Trigger: "shortcut"},
+		{OccurredAt: now, Action: "browser", Trigger: "mouse"},
+		{OccurredAt: now, Action: "terminal", Trigger: "shortcut"},
+		{OccurredAt: now.AddDate(0, 0, -7), Action: "ignored", Trigger: "shortcut"},
+	}
+
+	result := buildSnapshot(events, now)
+	if len(result.MouseDays) != 7 || len(result.ShortcutDays) != 7 {
+		t.Fatalf("expected two seven-day series, got %d and %d", len(result.MouseDays), len(result.ShortcutDays))
+	}
+	if got := countForDay(result.MouseDays, "2026-08-14"); got != 1 {
+		t.Fatalf("expected one mouse/menu action six days ago, got %d", got)
+	}
+	if got := countForDay(result.ShortcutDays, "2026-08-20"); got != 1 {
+		t.Fatalf("expected one shortcut today, got %d", got)
+	}
 }
 
 func TestBuildSnapshotHidesLearnedAction(t *testing.T) {

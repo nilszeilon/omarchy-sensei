@@ -20,14 +20,14 @@ Panel {
   property int selectedDayIndex: -1
 
   function todayIndex() {
-    for (var i = 0; i < stats.days.length; i++) {
-      if (stats.days[i] && stats.days[i].today === true) return i
+    for (var i = 0; i < stats.shortcutDays.length; i++) {
+      if (stats.shortcutDays[i] && stats.shortcutDays[i].today === true) return i
     }
-    return Math.max(0, stats.days.length - 1)
+    return Math.max(0, stats.shortcutDays.length - 1)
   }
   function selectDay(index) {
-    if (index < 0 || index >= stats.days.length) return
-    var day = stats.days[index]
+    if (index < 0 || index >= stats.shortcutDays.length) return
+    var day = stats.shortcutDays[index]
     if (!day || String(day.date || "") === "") return
     selectedDayIndex = index
     cursorActive = true
@@ -38,26 +38,20 @@ Panel {
       return
     }
 
-    var week = Math.floor(selectedDayIndex / 7)
-    var weekday = selectedDayIndex % 7
-    var nextWeek = Math.max(0, Math.min(52, week + dx))
-    var nextWeekday = Math.max(0, Math.min(6, weekday + dy))
-    var nextIndex = nextWeek * 7 + nextWeekday
-    if (nextIndex < stats.days.length && stats.days[nextIndex]
-        && String(stats.days[nextIndex].date || "") !== "") {
-      selectDay(nextIndex)
-    }
+    var delta = dx !== 0 ? dx : dy
+    selectDay(Math.max(0, Math.min(6, selectedDayIndex + delta)))
   }
   function selectedDay() {
-    return selectedDayIndex >= 0 && selectedDayIndex < stats.days.length
-      ? stats.days[selectedDayIndex]
+    return selectedDayIndex >= 0 && selectedDayIndex < stats.shortcutDays.length
+      ? stats.shortcutDays[selectedDayIndex]
       : null
   }
   function selectedDayLabel() {
     var day = selectedDay()
-    if (!day || !day.date) return "Use arrows or h/j/k/l to explore the graph"
-    var count = Number(day.count || 0)
-    return day.date + " · " + count + (count === 1 ? " keyboard action" : " keyboard actions")
+    if (!day || !day.date) return "Use arrows or h/j/k/l to compare days"
+    var mouseDay = stats.mouseDays[selectedDayIndex]
+    return day.date + " · Mouse/menu " + Number(mouseDay ? mouseDay.count : 0)
+      + " · Shortcuts " + Number(day.count || 0)
   }
 
   function open() {
@@ -72,13 +66,9 @@ Panel {
     return false
   }
   function alpha(color, opacity) { return Qt.rgba(color.r, color.g, color.b, opacity) }
-  function intensity(count) {
-    if (count <= 0 || stats.maxCount <= 0) return 0
-    var ratio = count / stats.maxCount
-    if (ratio <= 0.25) return 0.28
-    if (ratio <= 0.5) return 0.48
-    if (ratio <= 0.75) return 0.7
-    return 1
+  function barHeight(count) {
+    if (stats.maxCount <= 0) return 0
+    return Math.max(count > 0 ? 3 : 0, Math.round(Style.space(48) * Number(count) / stats.maxCount))
   }
 
   SenseiModel { id: stats }
@@ -116,10 +106,10 @@ Panel {
 
         Column {
           width: parent.width
-          spacing: Style.space(6)
+          spacing: Style.space(10)
 
           Text {
-            text: "Keyboard-first activity"
+            text: "Mouse / menu actions · last 7 days"
             color: root.foreground
             font.family: root.fontFamily
             font.pixelSize: Style.font.body
@@ -127,48 +117,110 @@ Panel {
           }
 
           Row {
-            id: heatmap
-            width: parent.width - Style.space(16)
-            readonly property real cellGap: 2
-            readonly property real cellSize: Math.max(3, Math.floor((width - (52 * cellGap)) / 53))
-            spacing: cellGap
+            id: mouseChart
+            width: parent.width
+            height: Style.space(62)
+            spacing: Style.space(4)
 
             Repeater {
-              model: 53
+              model: 7
 
-              Column {
-                id: weekColumn
+              Rectangle {
                 required property int index
-                readonly property int weekIndex: index
-                spacing: heatmap.cellGap
+                readonly property var day: index < stats.mouseDays.length ? stats.mouseDays[index] : null
+                width: (mouseChart.width - mouseChart.spacing * 6) / 7
+                height: mouseChart.height
+                radius: Style.cornerRadius
+                color: root.alpha(root.foreground, root.cursorActive && root.selectedDayIndex === index ? 0.1 : 0.04)
+                border.width: root.cursorActive && root.selectedDayIndex === index ? 1 : 0
+                border.color: root.foreground
 
-                Repeater {
-                  model: 7
+                Rectangle {
+                  anchors.bottom: dayName.top
+                  anchors.bottomMargin: Style.space(4)
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  width: Math.max(Style.space(8), parent.width - Style.space(12))
+                  height: root.barHeight(parent.day ? Number(parent.day.count) : 0)
+                  radius: 2
+                  color: root.alpha(root.foreground, 0.55)
+                }
 
-                  Rectangle {
-                    required property int index
-                    readonly property int dayIndex: weekColumn.weekIndex * 7 + index
-                    readonly property var day: dayIndex < stats.days.length ? stats.days[dayIndex] : null
-                    readonly property bool hasCursor: root.cursorActive && root.selectedDayIndex === dayIndex
-                    width: heatmap.cellSize
-                    height: heatmap.cellSize
-                    radius: 1.5
-                    color: day && Number(day.count) > 0
-                      ? root.accent
-                      : root.alpha(root.foreground, 0.1)
-                    border.width: hasCursor ? 2 : day && day.today ? 1 : 0
-                    border.color: root.foreground
+                Text {
+                  id: dayName
+                  anchors.bottom: parent.bottom
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  text: parent.day && parent.day.date
+                    ? Qt.formatDate(new Date(parent.day.date + "T12:00:00"), "ddd").slice(0, 1)
+                    : ""
+                  color: root.foreground
+                  opacity: 0.65
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
 
-                    ToolTip.visible: hover.containsMouse && day !== null && String(day.date || "") !== ""
-                    ToolTip.text: day && day.date ? day.date + " · " + day.count + " keyboard actions" : ""
+                MouseArea {
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  onPositionChanged: root.selectDay(parent.index)
+                }
+              }
+            }
+          }
 
-                    MouseArea {
-                      id: hover
-                      anchors.fill: parent
-                      hoverEnabled: true
-                      onPositionChanged: root.selectDay(parent.dayIndex)
-                    }
-                  }
+          Text {
+            text: "Omarchy shortcuts · last 7 days"
+            color: root.foreground
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.body
+            font.bold: true
+          }
+
+          Row {
+            id: shortcutChart
+            width: parent.width
+            height: Style.space(62)
+            spacing: Style.space(4)
+
+            Repeater {
+              model: 7
+
+              Rectangle {
+                required property int index
+                readonly property var day: index < stats.shortcutDays.length ? stats.shortcutDays[index] : null
+                width: (shortcutChart.width - shortcutChart.spacing * 6) / 7
+                height: shortcutChart.height
+                radius: Style.cornerRadius
+                color: root.alpha(root.foreground, root.cursorActive && root.selectedDayIndex === index ? 0.1 : 0.04)
+                border.width: root.cursorActive && root.selectedDayIndex === index ? 1 : 0
+                border.color: root.foreground
+
+                Rectangle {
+                  anchors.bottom: shortcutDayName.top
+                  anchors.bottomMargin: Style.space(4)
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  width: Math.max(Style.space(8), parent.width - Style.space(12))
+                  height: root.barHeight(parent.day ? Number(parent.day.count) : 0)
+                  radius: 2
+                  color: root.accent
+                }
+
+                Text {
+                  id: shortcutDayName
+                  anchors.bottom: parent.bottom
+                  anchors.horizontalCenter: parent.horizontalCenter
+                  text: parent.day && parent.day.date
+                    ? Qt.formatDate(new Date(parent.day.date + "T12:00:00"), "ddd").slice(0, 1)
+                    : ""
+                  color: root.foreground
+                  opacity: 0.65
+                  font.family: root.fontFamily
+                  font.pixelSize: Style.font.caption
+                }
+
+                MouseArea {
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  onPositionChanged: root.selectDay(parent.index)
                 }
               }
             }
