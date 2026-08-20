@@ -36,8 +36,11 @@ func TestInstallHyprIntegrationIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(lua), "function o.bind") || !strings.Contains(string(lua), "shortcut") {
+	if !strings.Contains(string(lua), "function hl.bind") || !strings.Contains(string(lua), "shortcut") {
 		t.Fatalf("generated integration does not wrap bindings:\n%s", lua)
+	}
+	if strings.Contains(string(lua), "record_options.transparent") || !strings.Contains(string(lua), "hl.dispatch(dispatcher)") {
+		t.Fatalf("generated observer must dispatch the original action in one binding:\n%s", lua)
 	}
 	if luac, err := exec.LookPath("luac"); err == nil {
 		if output, err := exec.Command(luac, "-p", paths.SenseiLua).CombinedOutput(); err != nil {
@@ -63,8 +66,11 @@ func TestMenuIntegrationPreservesUserEntriesAndUninstalls(t *testing.T) {
 	if !strings.Contains(string(content), "personal.notes") || !strings.Contains(string(content), "trigger.capture.screenshot") {
 		t.Fatalf("expected user and Sensei entries:\n%s", content)
 	}
+	if !strings.Contains(string(content), `"aliases":["reminder-set","remind"]`) {
+		t.Fatalf("expected reminder route aliases to be preserved:\n%s", content)
+	}
 	block := strings.TrimSuffix(strings.TrimSpace(menuOverrideBlock()), ",")
-	var overrides map[string]map[string]string
+	var overrides map[string]map[string]any
 	if err := json.Unmarshal([]byte("{"+block+"}"), &overrides); err != nil {
 		t.Fatalf("generated menu overrides are invalid: %v\n%s", err, block)
 	}

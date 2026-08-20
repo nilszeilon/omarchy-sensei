@@ -301,6 +301,7 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 
 	open := map[string]*Task{}
 	knownShortcuts := map[string][]string{}
+	lastShortcutAt := map[string]time.Time{}
 	for _, event := range ordered {
 		if event.Trigger == "shortcut" && event.Shortcut != "" {
 			knownShortcuts[event.Action] = mergeShortcuts(knownShortcuts[event.Action], event.Shortcut)
@@ -312,6 +313,14 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		}
 		switch event.Trigger {
 		case "menu", "mouse":
+			// Some shortcuts intentionally route through an instrumented Omarchy
+			// menu action. That menu event is the shortcut's consequence, not a
+			// second slow use, so do not reopen the task it just completed.
+			if event.Trigger == "menu" && !lastShortcutAt[event.Action].IsZero() &&
+				event.OccurredAt.Sub(lastShortcutAt[event.Action]) >= 0 &&
+				event.OccurredAt.Sub(lastShortcutAt[event.Action]) < time.Second {
+				continue
+			}
 			shortcuts := eventShortcuts(event)
 			if len(shortcuts) == 0 {
 				continue
@@ -326,6 +335,7 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 			task.Shortcut = task.Shortcuts[0]
 			task.SlowUses++
 		case "shortcut":
+			lastShortcutAt[event.Action] = event.OccurredAt
 			delete(open, event.Action)
 		}
 	}
@@ -374,17 +384,21 @@ func mergeShortcuts(existing []string, additions ...string) []string {
 	result := append([]string(nil), existing...)
 	seen := make(map[string]bool, len(result))
 	for _, shortcut := range result {
-		seen[strings.ToUpper(strings.TrimSpace(shortcut))] = true
+		seen[canonicalShortcut(shortcut)] = true
 	}
 	for _, shortcut := range additions {
 		shortcut = strings.TrimSpace(shortcut)
-		key := strings.ToUpper(shortcut)
+		key := canonicalShortcut(shortcut)
 		if shortcut != "" && !seen[key] {
 			result = append(result, shortcut)
 			seen[key] = true
 		}
 	}
 	return result
+}
+
+func canonicalShortcut(shortcut string) string {
+	return strings.Join(strings.Fields(strings.ReplaceAll(strings.ToUpper(shortcut), "+", " ")), " ")
 }
 
 func fatal(message string) {

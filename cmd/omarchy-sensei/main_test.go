@@ -47,6 +47,19 @@ func TestSlowActionAfterShortcutReopensTask(t *testing.T) {
 	}
 }
 
+func TestMenuRoutedByShortcutDoesNotReopenTask(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	events := []Event{
+		{OccurredAt: now, Action: "set-reminder", Title: "Set reminder", Trigger: "menu", Shortcut: "SUPER CTRL + R"},
+		{OccurredAt: now.Add(time.Second), Action: "set-reminder", Title: "Set reminder", Trigger: "shortcut", Shortcut: "SUPER + CTRL + R"},
+		{OccurredAt: now.Add(1200 * time.Millisecond), Action: "set-reminder", Title: "Set reminder", Trigger: "menu", Shortcut: "SUPER CTRL + R"},
+	}
+
+	if tasks := buildSnapshot(events, now).Tasks; len(tasks) != 0 {
+		t.Fatalf("expected routed menu consequence to stay closed, got %#v", tasks)
+	}
+}
+
 func TestRepeatedSlowUsesStayOneTask(t *testing.T) {
 	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
 	events := []Event{
@@ -97,5 +110,12 @@ func TestShortcutsFromOmarchyKeybindings(t *testing.T) {
 	}
 	if got := shortcutsFromKeybindings(data, "Unknown", "SUPER + U"); len(got) != 1 || got[0] != "SUPER + U" {
 		t.Fatalf("expected fallback shortcut, got %#v", got)
+	}
+}
+
+func TestMergeShortcutsNormalizesModifierFormatting(t *testing.T) {
+	got := mergeShortcuts([]string{"SUPER CTRL + R"}, "SUPER + CTRL + R")
+	if len(got) != 1 || got[0] != "SUPER CTRL + R" {
+		t.Fatalf("expected equivalent chords to be deduplicated, got %#v", got)
 	}
 }
