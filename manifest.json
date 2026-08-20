@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.nilszeilon.omarchy-sensei",
   "name": "Omarchy Sensei",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "author": "Nils Zeilon",
   "license": "MIT",
   "description": "Keyboard practice tasks created by the mouse actions you actually use.",

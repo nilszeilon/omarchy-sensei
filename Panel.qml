@@ -154,20 +154,25 @@ Panel {
                   Text {
                     id: shortcutText
                     anchors.centerIn: parent
+                    width: parent.width - Style.space(16)
                     text: taskCard.modelData.shortcut
                     color: root.accent
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.body
                     font.bold: true
+                    horizontalAlignment: Text.AlignHCenter
+                    wrapMode: Text.Wrap
                   }
                 }
 
                 Text {
+                  width: parent.width
                   text: "Do it once with the keyboard to close this task."
                   color: root.foreground
                   opacity: 0.65
                   font.family: root.fontFamily
                   font.pixelSize: Style.font.caption
+                  wrapMode: Text.WordWrap
                 }
               }
 
