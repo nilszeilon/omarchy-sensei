@@ -130,14 +130,15 @@ BarWidget {
     model: root.observedClickTargets
 
     delegate: Item {
+      id: clickObserver
       required property var modelData
       visible: false
       width: 0
       height: 0
 
       Connections {
-        target: parent.modelData
-        function onPressed(buttonCode) { root.observeBarClick(parent.modelData, buttonCode) }
+        target: clickObserver.modelData
+        function onPressed(buttonCode) { root.observeBarClick(clickObserver.modelData, buttonCode) }
       }
     }
   }
