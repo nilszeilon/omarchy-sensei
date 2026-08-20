@@ -5,7 +5,7 @@ Turn mouse habits into keyboard practice.
 Sensei has one loop:
 
 1. Use a recognized Omarchy action through the mouse or menu.
-2. Sensei opens a task containing the matching shortcut.
+2. Sensei opens a task containing every matching shortcut shown by Omarchy's Super+K panel.
 3. Perform that action once with the shortcut.
 4. The task closes.
 

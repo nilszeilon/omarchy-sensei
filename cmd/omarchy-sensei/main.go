@@ -20,14 +20,16 @@ type Event struct {
 	Title      string    `json:"title"`
 	Trigger    string    `json:"trigger"`
 	Shortcut   string    `json:"shortcut,omitempty"`
+	Shortcuts  []string  `json:"shortcuts,omitempty"`
 }
 
 type Task struct {
-	Action   string    `json:"action"`
-	Title    string    `json:"title"`
-	Shortcut string    `json:"shortcut"`
-	OpenedAt time.Time `json:"openedAt"`
-	SlowUses int       `json:"slowUses"`
+	Action    string    `json:"action"`
+	Title     string    `json:"title"`
+	Shortcut  string    `json:"shortcut"`
+	Shortcuts []string  `json:"shortcuts"`
+	OpenedAt  time.Time `json:"openedAt"`
+	SlowUses  int       `json:"slowUses"`
 }
 
 type Snapshot struct {
@@ -96,11 +98,14 @@ func record(paths Paths, args []string) {
 		Trigger:    strings.TrimSpace(*trigger),
 		Shortcut:   strings.TrimSpace(*shortcut),
 	}
-	if event.Trigger != "shortcut" {
-		event.Shortcut = resolveCurrentShortcut(event.Title, event.Shortcut)
-	}
 	if event.Action == "" || event.Title == "" || !validTrigger(event.Trigger) {
 		fatal("record requires --action, --title, and a valid --trigger")
+	}
+	if event.Trigger != "shortcut" {
+		event.Shortcuts = resolveCurrentShortcuts(event.Title, event.Shortcut)
+		if len(event.Shortcuts) > 0 {
+			event.Shortcut = event.Shortcuts[0]
+		}
 	}
 	if event.Trigger != "shortcut" && event.Shortcut == "" {
 		fatal("non-shortcut actions require --shortcut so Sensei can teach them")
@@ -121,13 +126,14 @@ func run(paths Paths, args []string) {
 	if *action == "" || *title == "" || *shortcut == "" || len(command) != 1 {
 		fatal("run requires --action, --title, --shortcut, and one command after --")
 	}
-	currentShortcut := resolveCurrentShortcut(strings.TrimSpace(*title), strings.TrimSpace(*shortcut))
+	currentShortcuts := resolveCurrentShortcuts(strings.TrimSpace(*title), strings.TrimSpace(*shortcut))
 	if err := recordEvent(paths, Event{
 		OccurredAt: time.Now(),
 		Action:     strings.TrimSpace(*action),
 		Title:      strings.TrimSpace(*title),
 		Trigger:    "menu",
-		Shortcut:   currentShortcut,
+		Shortcut:   currentShortcuts[0],
+		Shortcuts:  currentShortcuts,
 	}); err != nil {
 		fatal(err.Error())
 	}
@@ -294,10 +300,10 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 	})
 
 	open := map[string]*Task{}
-	knownShortcuts := map[string]string{}
+	knownShortcuts := map[string][]string{}
 	for _, event := range ordered {
 		if event.Trigger == "shortcut" && event.Shortcut != "" {
-			knownShortcuts[event.Action] = event.Shortcut
+			knownShortcuts[event.Action] = mergeShortcuts(knownShortcuts[event.Action], event.Shortcut)
 		}
 	}
 	for _, event := range ordered {
@@ -306,7 +312,8 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		}
 		switch event.Trigger {
 		case "menu", "mouse":
-			if event.Shortcut == "" {
+			shortcuts := eventShortcuts(event)
+			if len(shortcuts) == 0 {
 				continue
 			}
 			task := open[event.Action]
@@ -315,10 +322,8 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 				open[event.Action] = task
 			}
 			task.Title = event.Title
-			task.Shortcut = event.Shortcut
-			if current := knownShortcuts[event.Action]; current != "" {
-				task.Shortcut = current
-			}
+			task.Shortcuts = mergeShortcuts(shortcuts, knownShortcuts[event.Action]...)
+			task.Shortcut = task.Shortcuts[0]
 			task.SlowUses++
 		case "shortcut":
 			delete(open, event.Action)
@@ -338,55 +343,48 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 	return result
 }
 
-type hyprBinding struct {
-	Modmask     int    `json:"modmask"`
-	Key         string `json:"key"`
-	Keycode     int    `json:"keycode"`
-	Description string `json:"description"`
-}
-
-func resolveCurrentShortcut(title, fallback string) string {
-	output, err := exec.Command("hyprctl", "binds", "-j").Output()
+func resolveCurrentShortcuts(title, fallback string) []string {
+	output, err := exec.Command("omarchy-menu-keybindings", "--print").Output()
 	if err != nil {
-		return fallback
+		return mergeShortcuts(nil, fallback)
 	}
-	return shortcutFromBindings(output, title, fallback)
+	return shortcutsFromKeybindings(output, title, fallback)
 }
 
-func shortcutFromBindings(data []byte, title, fallback string) string {
-	var bindings []hyprBinding
-	if err := json.Unmarshal(data, &bindings); err != nil {
-		return fallback
-	}
-	shortcut := fallback
-	for _, binding := range bindings {
-		if !strings.EqualFold(strings.TrimSpace(binding.Description), strings.TrimSpace(title)) {
+func shortcutsFromKeybindings(data []byte, title, fallback string) []string {
+	var shortcuts []string
+	for _, line := range strings.Split(string(data), "\n") {
+		key, action, found := strings.Cut(line, "→")
+		if !found || !strings.EqualFold(strings.TrimSpace(action), strings.TrimSpace(title)) {
 			continue
 		}
-		key := strings.TrimSpace(binding.Key)
-		if key == "" && binding.Keycode > 0 {
-			key = fmt.Sprintf("code:%d", binding.Keycode)
-		}
-		if key == "" {
-			continue
-		}
-		var parts []string
-		if binding.Modmask&64 != 0 {
-			parts = append(parts, "SUPER")
-		}
-		if binding.Modmask&1 != 0 {
-			parts = append(parts, "SHIFT")
-		}
-		if binding.Modmask&4 != 0 {
-			parts = append(parts, "CTRL")
-		}
-		if binding.Modmask&8 != 0 {
-			parts = append(parts, "ALT")
-		}
-		parts = append(parts, strings.ToUpper(key))
-		shortcut = strings.Join(parts, " + ")
+		shortcuts = mergeShortcuts(shortcuts, strings.TrimSpace(key))
 	}
-	return shortcut
+	if len(shortcuts) == 0 {
+		shortcuts = mergeShortcuts(shortcuts, fallback)
+	}
+	return shortcuts
+}
+
+func eventShortcuts(event Event) []string {
+	return mergeShortcuts(event.Shortcuts, event.Shortcut)
+}
+
+func mergeShortcuts(existing []string, additions ...string) []string {
+	result := append([]string(nil), existing...)
+	seen := make(map[string]bool, len(result))
+	for _, shortcut := range result {
+		seen[strings.ToUpper(strings.TrimSpace(shortcut))] = true
+	}
+	for _, shortcut := range additions {
+		shortcut = strings.TrimSpace(shortcut)
+		key := strings.ToUpper(shortcut)
+		if shortcut != "" && !seen[key] {
+			result = append(result, shortcut)
+			seen[key] = true
+		}
+	}
+	return result
 }
 
 func fatal(message string) {

@@ -167,23 +167,33 @@ Panel {
                     }
                   }
 
-                  Rectangle {
+                  Column {
                     width: parent.width
-                    implicitHeight: shortcutText.implicitHeight + Style.space(16)
-                    radius: Style.cornerRadius
-                    color: root.alpha(root.accent, 0.15)
+                    spacing: Style.space(5)
 
-                    Text {
-                      id: shortcutText
-                      anchors.centerIn: parent
-                      width: parent.width - Style.space(16)
-                      text: taskCard.modelData.shortcut
-                      color: root.accent
-                      font.family: root.fontFamily
-                      font.pixelSize: Style.font.body
-                      font.bold: true
-                      horizontalAlignment: Text.AlignHCenter
-                      wrapMode: Text.Wrap
+                    Repeater {
+                      model: taskCard.modelData.shortcuts || [taskCard.modelData.shortcut]
+
+                      Rectangle {
+                        required property string modelData
+                        width: taskContent.width
+                        implicitHeight: shortcutText.implicitHeight + Style.space(16)
+                        radius: Style.cornerRadius
+                        color: root.alpha(root.accent, 0.15)
+
+                        Text {
+                          id: shortcutText
+                          anchors.centerIn: parent
+                          width: parent.width - Style.space(16)
+                          text: parent.modelData
+                          color: root.accent
+                          font.family: root.fontFamily
+                          font.pixelSize: Style.font.body
+                          font.bold: true
+                          horizontalAlignment: Text.AlignHCenter
+                          wrapMode: Text.Wrap
+                        }
+                      }
                     }
                   }
 

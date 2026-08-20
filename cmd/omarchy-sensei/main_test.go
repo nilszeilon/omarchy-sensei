@@ -18,7 +18,7 @@ func TestSlowActionOpensTask(t *testing.T) {
 	if len(result.Tasks) != 1 {
 		t.Fatalf("expected one open task, got %#v", result.Tasks)
 	}
-	if result.Tasks[0].Shortcut != "SUPER + LEFT/RIGHT" {
+	if result.Tasks[0].Shortcut != "SUPER + LEFT/RIGHT" || len(result.Tasks[0].Shortcuts) != 1 {
 		t.Fatalf("expected keyboard hint, got %#v", result.Tasks[0])
 	}
 }
@@ -75,30 +75,27 @@ func TestTasksAreOrderedByWorstOffender(t *testing.T) {
 	}
 }
 
-func TestTaskUsesLatestObservedShortcut(t *testing.T) {
+func TestTaskIncludesAllResolvedShortcuts(t *testing.T) {
 	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
 	events := []Event{
 		{OccurredAt: now, Action: "screenshot", Title: "Screenshot", Trigger: "shortcut", Shortcut: "SUPER + P"},
-		{OccurredAt: now.Add(time.Second), Action: "screenshot", Title: "Screenshot", Trigger: "menu", Shortcut: "PRINT"},
+		{OccurredAt: now.Add(time.Second), Action: "screenshot", Title: "Screenshot", Trigger: "menu", Shortcut: "PRINT", Shortcuts: []string{"PRINT", "SUPER + P"}},
 	}
 
 	tasks := buildSnapshot(events, now).Tasks
-	if len(tasks) != 1 || tasks[0].Shortcut != "SUPER + P" {
-		t.Fatalf("expected latest observed remap, got %#v", tasks)
+	if len(tasks) != 1 || len(tasks[0].Shortcuts) != 2 || tasks[0].Shortcuts[0] != "PRINT" || tasks[0].Shortcuts[1] != "SUPER + P" {
+		t.Fatalf("expected all active shortcuts without duplicates, got %#v", tasks)
 	}
 }
 
-func TestShortcutFromBindingsPrefersLatestMatchingBinding(t *testing.T) {
-	data := []byte(`[
-		{"modmask":0,"key":"PRINT","description":"Screenshot"},
-		{"modmask":64,"key":"P","description":"Screenshot"},
-		{"modmask":72,"key":"P","description":"Color picker"}
-	]`)
+func TestShortcutsFromOmarchyKeybindings(t *testing.T) {
+	data := []byte("PRINT                               → Screenshot\nSUPER + P                           → Screenshot\nSUPER ALT + P                       → Color picker\n")
 
-	if got := shortcutFromBindings(data, "Screenshot", "PRINT"); got != "SUPER + P" {
-		t.Fatalf("expected current remapped shortcut, got %q", got)
+	got := shortcutsFromKeybindings(data, "Screenshot", "FALLBACK")
+	if len(got) != 2 || got[0] != "PRINT" || got[1] != "SUPER + P" {
+		t.Fatalf("expected every current binding, got %#v", got)
 	}
-	if got := shortcutFromBindings(data, "Unknown", "SUPER + U"); got != "SUPER + U" {
-		t.Fatalf("expected fallback shortcut, got %q", got)
+	if got := shortcutsFromKeybindings(data, "Unknown", "SUPER + U"); len(got) != 1 || got[0] != "SUPER + U" {
+		t.Fatalf("expected fallback shortcut, got %#v", got)
 	}
 }

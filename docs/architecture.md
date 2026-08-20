@@ -13,4 +13,4 @@ The Quickshell panel renders only these open tasks and refreshes every two secon
 
 The current integration observes semantic Omarchy shortcuts plus explicitly matched menu actions. Adding broader mouse observations requires a reliable semantic mapping to a keyboard action; raw click logging is intentionally out of scope.
 
-Before a menu or mouse event is stored, the collector resolves its description against `hyprctl binds -j` and uses the last matching active binding. Snapshot folding also prefers the latest previously observed shortcut for an action, preventing an installation-time menu default from replacing a known user remap.
+Before a menu or mouse event is stored, the collector reads the same resolved keybinding list used by Omarchy's Super+K panel. Every active binding with the matching description is stored and displayed, including Lua, keycode, and user-remapped alternatives.
