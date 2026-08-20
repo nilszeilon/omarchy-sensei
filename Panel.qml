@@ -82,7 +82,7 @@ Panel {
           }
 
           Row {
-            spacing: 3
+            spacing: 2
 
             Repeater {
               model: 53
@@ -91,7 +91,7 @@ Panel {
                 id: weekColumn
                 required property int index
                 readonly property int weekIndex: index
-                spacing: 3
+                spacing: 2
 
                 Repeater {
                   model: 7
