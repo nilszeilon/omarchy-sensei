@@ -96,6 +96,9 @@ func record(paths Paths, args []string) {
 		Trigger:    strings.TrimSpace(*trigger),
 		Shortcut:   strings.TrimSpace(*shortcut),
 	}
+	if event.Trigger != "shortcut" {
+		event.Shortcut = resolveCurrentShortcut(event.Title, event.Shortcut)
+	}
 	if event.Action == "" || event.Title == "" || !validTrigger(event.Trigger) {
 		fatal("record requires --action, --title, and a valid --trigger")
 	}
@@ -118,12 +121,13 @@ func run(paths Paths, args []string) {
 	if *action == "" || *title == "" || *shortcut == "" || len(command) != 1 {
 		fatal("run requires --action, --title, --shortcut, and one command after --")
 	}
+	currentShortcut := resolveCurrentShortcut(strings.TrimSpace(*title), strings.TrimSpace(*shortcut))
 	if err := recordEvent(paths, Event{
 		OccurredAt: time.Now(),
 		Action:     strings.TrimSpace(*action),
 		Title:      strings.TrimSpace(*title),
 		Trigger:    "menu",
-		Shortcut:   strings.TrimSpace(*shortcut),
+		Shortcut:   currentShortcut,
 	}); err != nil {
 		fatal(err.Error())
 	}
@@ -290,6 +294,12 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 	})
 
 	open := map[string]*Task{}
+	knownShortcuts := map[string]string{}
+	for _, event := range ordered {
+		if event.Trigger == "shortcut" && event.Shortcut != "" {
+			knownShortcuts[event.Action] = event.Shortcut
+		}
+	}
 	for _, event := range ordered {
 		if event.Action == "" {
 			continue
@@ -306,6 +316,9 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 			}
 			task.Title = event.Title
 			task.Shortcut = event.Shortcut
+			if current := knownShortcuts[event.Action]; current != "" {
+				task.Shortcut = current
+			}
 			task.SlowUses++
 		case "shortcut":
 			delete(open, event.Action)
@@ -323,6 +336,57 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		return result.Tasks[i].OpenedAt.Before(result.Tasks[j].OpenedAt)
 	})
 	return result
+}
+
+type hyprBinding struct {
+	Modmask     int    `json:"modmask"`
+	Key         string `json:"key"`
+	Keycode     int    `json:"keycode"`
+	Description string `json:"description"`
+}
+
+func resolveCurrentShortcut(title, fallback string) string {
+	output, err := exec.Command("hyprctl", "binds", "-j").Output()
+	if err != nil {
+		return fallback
+	}
+	return shortcutFromBindings(output, title, fallback)
+}
+
+func shortcutFromBindings(data []byte, title, fallback string) string {
+	var bindings []hyprBinding
+	if err := json.Unmarshal(data, &bindings); err != nil {
+		return fallback
+	}
+	shortcut := fallback
+	for _, binding := range bindings {
+		if !strings.EqualFold(strings.TrimSpace(binding.Description), strings.TrimSpace(title)) {
+			continue
+		}
+		key := strings.TrimSpace(binding.Key)
+		if key == "" && binding.Keycode > 0 {
+			key = fmt.Sprintf("code:%d", binding.Keycode)
+		}
+		if key == "" {
+			continue
+		}
+		var parts []string
+		if binding.Modmask&64 != 0 {
+			parts = append(parts, "SUPER")
+		}
+		if binding.Modmask&1 != 0 {
+			parts = append(parts, "SHIFT")
+		}
+		if binding.Modmask&4 != 0 {
+			parts = append(parts, "CTRL")
+		}
+		if binding.Modmask&8 != 0 {
+			parts = append(parts, "ALT")
+		}
+		parts = append(parts, strings.ToUpper(key))
+		shortcut = strings.Join(parts, " + ")
+	}
+	return shortcut
 }
 
 func fatal(message string) {

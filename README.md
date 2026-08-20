@@ -21,6 +21,8 @@ cd ~/.config/omarchy/plugins/io.github.nilszeilon.omarchy-sensei
 
 The installer builds the local collector and connects recognized Omarchy shortcuts and matching menu actions. It never edits `/usr/share/omarchy`.
 
+Task hints resolve against the active Hyprland bindings when the task is opened, so user remaps take precedence over Omarchy defaults.
+
 ## Controls
 
 Tasks are ordered by their slow-use count, so the worst offender is always first. Use arrows or `h/j/k/l` to move through the scrollable list, `Tab`/`Shift+Tab` to switch bar panels, and `Esc` to close.

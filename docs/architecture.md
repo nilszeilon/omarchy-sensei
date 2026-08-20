@@ -12,3 +12,5 @@ The snapshot folds events in chronological order into open tasks:
 The Quickshell panel renders only these open tasks and refreshes every two seconds. Tasks are ordered by descending slow-use count, with the oldest task first when counts tie. The bounded list follows its keyboard cursor and supports arrows plus `h/j/k/l`. There are no scores, charts, skill trees, trials, notifications, or manually completed checkboxes. The required behavior itself is the completion action.
 
 The current integration observes semantic Omarchy shortcuts plus explicitly matched menu actions. Adding broader mouse observations requires a reliable semantic mapping to a keyboard action; raw click logging is intentionally out of scope.
+
+Before a menu or mouse event is stored, the collector resolves its description against `hyprctl binds -j` and uses the last matching active binding. Snapshot folding also prefers the latest previously observed shortcut for an action, preventing an installation-time menu default from replacing a known user remap.

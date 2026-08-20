@@ -74,3 +74,31 @@ func TestTasksAreOrderedByWorstOffender(t *testing.T) {
 		t.Fatalf("expected terminal to be the worst offender, got %#v", tasks)
 	}
 }
+
+func TestTaskUsesLatestObservedShortcut(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	events := []Event{
+		{OccurredAt: now, Action: "screenshot", Title: "Screenshot", Trigger: "shortcut", Shortcut: "SUPER + P"},
+		{OccurredAt: now.Add(time.Second), Action: "screenshot", Title: "Screenshot", Trigger: "menu", Shortcut: "PRINT"},
+	}
+
+	tasks := buildSnapshot(events, now).Tasks
+	if len(tasks) != 1 || tasks[0].Shortcut != "SUPER + P" {
+		t.Fatalf("expected latest observed remap, got %#v", tasks)
+	}
+}
+
+func TestShortcutFromBindingsPrefersLatestMatchingBinding(t *testing.T) {
+	data := []byte(`[
+		{"modmask":0,"key":"PRINT","description":"Screenshot"},
+		{"modmask":64,"key":"P","description":"Screenshot"},
+		{"modmask":72,"key":"P","description":"Color picker"}
+	]`)
+
+	if got := shortcutFromBindings(data, "Screenshot", "PRINT"); got != "SUPER + P" {
+		t.Fatalf("expected current remapped shortcut, got %q", got)
+	}
+	if got := shortcutFromBindings(data, "Unknown", "SUPER + U"); got != "SUPER + U" {
+		t.Fatalf("expected fallback shortcut, got %q", got)
+	}
+}
