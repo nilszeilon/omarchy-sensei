@@ -16,6 +16,49 @@ Panel {
   readonly property color foreground: bar ? bar.foreground : Color.foreground
   readonly property color accent: Color.accent
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
+  property bool cursorActive: false
+  property int selectedDayIndex: -1
+
+  function todayIndex() {
+    for (var i = 0; i < stats.days.length; i++) {
+      if (stats.days[i] && stats.days[i].today === true) return i
+    }
+    return Math.max(0, stats.days.length - 1)
+  }
+  function selectDay(index) {
+    if (index < 0 || index >= stats.days.length) return
+    var day = stats.days[index]
+    if (!day || String(day.date || "") === "") return
+    selectedDayIndex = index
+    cursorActive = true
+  }
+  function moveCursor(dx, dy) {
+    if (!cursorActive || selectedDayIndex < 0) {
+      selectDay(todayIndex())
+      return
+    }
+
+    var week = Math.floor(selectedDayIndex / 7)
+    var weekday = selectedDayIndex % 7
+    var nextWeek = Math.max(0, Math.min(52, week + dx))
+    var nextWeekday = Math.max(0, Math.min(6, weekday + dy))
+    var nextIndex = nextWeek * 7 + nextWeekday
+    if (nextIndex < stats.days.length && stats.days[nextIndex]
+        && String(stats.days[nextIndex].date || "") !== "") {
+      selectDay(nextIndex)
+    }
+  }
+  function selectedDay() {
+    return selectedDayIndex >= 0 && selectedDayIndex < stats.days.length
+      ? stats.days[selectedDayIndex]
+      : null
+  }
+  function selectedDayLabel() {
+    var day = selectedDay()
+    if (!day || !day.date) return "Use arrows or h/j/k/l to explore the graph"
+    var count = Number(day.count || 0)
+    return day.date + " · " + count + (count === 1 ? " keyboard action" : " keyboard actions")
+  }
 
   function open() {
     root.controller.show()
@@ -52,6 +95,7 @@ Panel {
     PanelKeyCatcher {
       id: keyCatcher
       anchors.fill: parent
+      onMoveRequested: function(dx, dy) { root.moveCursor(dx, dy) }
       onCloseRequested: root.close()
       onTabRequested: function(direction) { root.switchPanel(direction) }
 
@@ -104,23 +148,36 @@ Panel {
                     required property int index
                     readonly property int dayIndex: weekColumn.weekIndex * 7 + index
                     readonly property var day: dayIndex < stats.days.length ? stats.days[dayIndex] : null
+                    readonly property bool hasCursor: root.cursorActive && root.selectedDayIndex === dayIndex
                     width: heatmap.cellSize
                     height: heatmap.cellSize
                     radius: 1.5
                     color: day && day.count > 0
                       ? root.alpha(root.accent, root.intensity(Number(day.count)))
                       : root.alpha(root.foreground, 0.1)
-                    border.width: day && day.today ? 1 : 0
-                    border.color: root.foreground
+                    border.width: hasCursor ? 2 : day && day.today ? 1 : 0
+                    border.color: hasCursor ? root.accent : root.foreground
 
                     ToolTip.visible: hover.hovered && day !== null && String(day.date || "") !== ""
                     ToolTip.text: day && day.date ? day.date + " · " + day.count + " keyboard actions" : ""
 
-                    HoverHandler { id: hover }
+                    HoverHandler {
+                      id: hover
+                      onHoveredChanged: if (hovered) root.selectDay(parent.dayIndex)
+                    }
                   }
                 }
               }
             }
+          }
+
+          Text {
+            width: parent.width
+            text: root.selectedDayLabel()
+            color: root.foreground
+            opacity: 0.72
+            font.family: root.fontFamily
+            font.pixelSize: Style.font.caption
           }
         }
 

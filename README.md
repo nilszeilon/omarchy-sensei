@@ -24,6 +24,8 @@ Sensei automatically observes activated Omarchy keyboard bindings and a curated 
 5. Show a GitHub-style graph of keyboard-first activity.
 6. For actions without shortcuts, create a reviewable, privacy-safe context bundle that an agent can use to propose one.
 
+The panel is keyboard navigable: use the arrow keys or `h/j/k/l` to inspect days, `Tab`/`Shift+Tab` to switch bar panels, and `Esc` to close.
+
 ## Install
 
 ```sh
