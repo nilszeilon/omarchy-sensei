@@ -23,9 +23,18 @@ func TestBuildSnapshotChoosesWorstUnlearnedAction(t *testing.T) {
 	if result.Hint.Avoided != 6 {
 		t.Fatalf("expected score 6, got %d", result.Hint.Avoided)
 	}
-	if result.Days[len(result.Days)-1].Count != 1 {
-		t.Fatalf("expected one shortcut today")
+	if got := countForDay(result, "2026-08-20"); got != 1 {
+		t.Fatalf("expected one shortcut today, got %d", got)
 	}
+}
+
+func countForDay(snapshot Snapshot, date string) int {
+	for _, day := range snapshot.Days {
+		if day.Date == date {
+			return day.Count
+		}
+	}
+	return -1
 }
 
 func TestBuildSnapshotHidesLearnedAction(t *testing.T) {

@@ -1,0 +1,98 @@
+package main
+
+import (
+	"encoding/json"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"strings"
+	"testing"
+)
+
+func TestInstallHyprIntegrationIsIdempotent(t *testing.T) {
+	dir := t.TempDir()
+	paths := Paths{
+		HyprlandConfig: filepath.Join(dir, "hyprland.lua"),
+		SenseiLua:      filepath.Join(dir, "sensei.lua"),
+	}
+	original := "-- Load Omarchy defaults.\nrequire(\"default.hypr.omarchy\")\n"
+	if err := os.WriteFile(paths.HyprlandConfig, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installHyprIntegration(paths); err != nil {
+		t.Fatal(err)
+	}
+	if err := installHyprIntegration(paths); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(paths.HyprlandConfig)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Count(string(content), hyprStart) != 1 {
+		t.Fatalf("expected one managed block:\n%s", content)
+	}
+	lua, err := os.ReadFile(paths.SenseiLua)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(lua), "function o.bind") || !strings.Contains(string(lua), "shortcut") {
+		t.Fatalf("generated integration does not wrap bindings:\n%s", lua)
+	}
+	if luac, err := exec.LookPath("luac"); err == nil {
+		if output, err := exec.Command(luac, "-p", paths.SenseiLua).CombinedOutput(); err != nil {
+			t.Fatalf("generated Lua is invalid: %v\n%s", err, output)
+		}
+	}
+}
+
+func TestMenuIntegrationPreservesUserEntriesAndUninstalls(t *testing.T) {
+	dir := t.TempDir()
+	paths := Paths{MenuExtension: filepath.Join(dir, "omarchy-menu.jsonc")}
+	original := "{\n  // mine\n  \"personal.notes\": {\"label\":\"Notes\",\"action\":\"notes\"},\n}\n"
+	if err := os.WriteFile(paths.MenuExtension, []byte(original), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if err := installMenuIntegration(paths); err != nil {
+		t.Fatal(err)
+	}
+	content, err := os.ReadFile(paths.MenuExtension)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(content), "personal.notes") || !strings.Contains(string(content), "trigger.capture.screenshot") {
+		t.Fatalf("expected user and Sensei entries:\n%s", content)
+	}
+	block := strings.TrimSuffix(strings.TrimSpace(menuOverrideBlock()), ",")
+	var overrides map[string]map[string]string
+	if err := json.Unmarshal([]byte("{"+block+"}"), &overrides); err != nil {
+		t.Fatalf("generated menu overrides are invalid: %v\n%s", err, block)
+	}
+	if len(overrides) != len(coachedActions) {
+		t.Fatalf("expected %d menu overrides, got %d", len(coachedActions), len(overrides))
+	}
+	if err := removeManagedBlock(paths.MenuExtension, menuStart, menuEnd); err != nil {
+		t.Fatal(err)
+	}
+	content, err = os.ReadFile(paths.MenuExtension)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(content), menuStart) || !strings.Contains(string(content), "personal.notes") {
+		t.Fatalf("uninstall did not preserve user entry:\n%s", content)
+	}
+}
+
+func TestPausePreventsRecording(t *testing.T) {
+	dir := t.TempDir()
+	paths := Paths{StateDir: dir, Events: filepath.Join(dir, "events.jsonl"), Paused: filepath.Join(dir, "paused")}
+	if err := setPaused(paths, true); err != nil {
+		t.Fatal(err)
+	}
+	if err := recordEvent(paths, Event{Action: "test", Title: "Test", Trigger: "shortcut"}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(paths.Events); !os.IsNotExist(err) {
+		t.Fatalf("paused recorder wrote an event")
+	}
+}

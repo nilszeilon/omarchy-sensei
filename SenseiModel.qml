@@ -8,6 +8,7 @@ Item {
   property var days: []
   property int maxCount: 0
   property var hint: null
+  property bool paused: false
   property string error: ""
 
   function refresh() {
@@ -20,6 +21,7 @@ Item {
       days = parsed.days || []
       maxCount = Number(parsed.maxCount || 0)
       hint = parsed.hint || null
+      paused = parsed.paused === true
       error = ""
     } catch (e) {
       error = "Sensei could not read its local activity data."

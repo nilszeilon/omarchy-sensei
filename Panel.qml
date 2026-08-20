@@ -1,3 +1,5 @@
+pragma ComponentBehavior: Bound
+
 import QtQuick
 import QtQuick.Controls
 import Quickshell
@@ -86,6 +88,7 @@ Panel {
               model: 53
 
               Column {
+                id: weekColumn
                 required property int index
                 readonly property int weekIndex: index
                 spacing: 3
@@ -95,7 +98,7 @@ Panel {
 
                   Rectangle {
                     required property int index
-                    readonly property int dayIndex: parent.parent.weekIndex * 7 + index
+                    readonly property int dayIndex: weekColumn.weekIndex * 7 + index
                     readonly property var day: dayIndex < stats.days.length ? stats.days[dayIndex] : null
                     width: 7
                     height: 7
@@ -104,8 +107,8 @@ Panel {
                       ? root.alpha(root.accent, root.intensity(Number(day.count)))
                       : root.alpha(root.foreground, 0.1)
 
-                    ToolTip.visible: hover.hovered && day !== null
-                    ToolTip.text: day ? day.date + " · " + day.count + " keyboard actions" : ""
+                    ToolTip.visible: hover.hovered && day !== null && String(day.date || "") !== ""
+                    ToolTip.text: day && day.date ? day.date + " · " + day.count + " keyboard actions" : ""
 
                     HoverHandler { id: hover }
                   }
@@ -131,7 +134,7 @@ Panel {
 
             Text {
               width: parent.width
-              text: stats.hint ? "Your next lesson" : "Sensei is watching quietly"
+              text: stats.paused ? "Sensei is paused" : stats.hint ? "Your next lesson" : "Sensei is watching quietly"
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -142,6 +145,8 @@ Panel {
               width: parent.width
               text: stats.error !== ""
                 ? stats.error
+                : stats.paused
+                  ? "Resume with omarchy-sensei resume."
                 : stats.hint
                   ? stats.hint.title + " was done the slow way " + stats.hint.slowUses + " times. Use " + stats.hint.shortcut + "."
                   : "No repeated unlearned shortcut yet."

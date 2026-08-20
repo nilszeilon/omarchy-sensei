@@ -5,7 +5,7 @@ Build keyboard-first Omarchy habits, one shortcut at a time.
 Omarchy Sensei is a privacy-first coaching plugin for [Omarchy Quattro](https://github.com/basecamp/omarchy). It aims to notice repeated, slow interaction patterns, teach the matching keyboard shortcut, and celebrate the habits that stick.
 
 > [!IMPORTANT]
-> This is an early vertical slice. The graph and lesson use real local events, but automatic Omarchy event sources are not connected yet.
+Sensei automatically observes activated Omarchy keyboard bindings and a curated set of equivalent menu actions. It never records ordinary typing.
 
 ## Principles
 
@@ -28,7 +28,11 @@ Omarchy Sensei is a privacy-first coaching plugin for [Omarchy Quattro](https://
 
 ```sh
 omarchy plugin add https://github.com/nilszeilon/omarchy-sensei.git --enable
+cd ~/.config/omarchy/plugins/io.github.nilszeilon.omarchy-sensei
+./install.sh
 ```
+
+The installer builds the small local collector, creates timestamped backups, adds a managed Sensei loader before Omarchy's default Hyprland bindings, and adds managed action overrides to the user-owned Omarchy menu extension. It never edits `/usr/share/omarchy`.
 
 Move it to the right section of the bar if needed:
 
@@ -44,7 +48,7 @@ omarchy plugin validate .
 qmllint -I "$OMARCHY_PATH/shell" BarWidget.qml Panel.qml
 ```
 
-Until automatic event sources land, semantic events can be recorded directly:
+Semantic events can also be recorded directly:
 
 ```sh
 omarchy-sensei record \
@@ -62,6 +66,20 @@ omarchy-sensei record \
 
 Sensei stores these events as private JSON Lines under `$XDG_STATE_HOME/omarchy-sensei/` (or `~/.local/state/omarchy-sensei/`). Each event contains an action, trigger class, and known shortcut—never the text the user typed.
 
+Pause or resume observation without affecting the integrations:
+
+```sh
+omarchy-sensei pause
+omarchy-sensei resume
+```
+
+Inspect or delete all recorded activity:
+
+```sh
+omarchy-sensei status
+omarchy-sensei clear
+```
+
 Saved changes in an installed user plugin reload automatically. To force discovery:
 
 ```sh
@@ -71,6 +89,8 @@ omarchy-shell shell rescanPlugins
 ## Remove
 
 ```sh
+omarchy-sensei uninstall
+hyprctl reload
 omarchy plugin remove io.github.nilszeilon.omarchy-sensei
 ```
 

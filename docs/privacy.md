@@ -21,4 +21,6 @@ Omarchy Sensei must be useful without becoming a keylogger.
 
 ## User control
 
-Collection must be opt-in. The UI must expose pause, retention, export, and delete controls. Agent handoff must show the exact context bundle and require confirmation before anything leaves the machine.
+Collection must be opt-in. The collector must expose pause and complete-data deletion controls. Any future agent handoff must show the exact context bundle and require confirmation before anything leaves the machine.
+
+The initial release opts in through `omarchy-sensei setup`. `pause`, `resume`, `status`, and `clear` provide local control. No network client or telemetry endpoint exists in the collector.
