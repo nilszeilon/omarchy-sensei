@@ -1,32 +1,15 @@
 # Omarchy Sensei
 
-Build keyboard-first Omarchy habits, one shortcut at a time.
+Turn mouse habits into keyboard practice.
 
-Omarchy Sensei is a privacy-first coaching plugin for [Omarchy Quattro](https://github.com/basecamp/omarchy). It notices slow interaction patterns, teaches the matching keyboard shortcut, and celebrates the habits that stick.
+Sensei has one loop:
 
-> [!IMPORTANT]
-Sensei automatically observes activated Omarchy keyboard bindings and a curated set of equivalent menu actions. It never records ordinary typing.
+1. Use a recognized Omarchy action through the mouse or menu.
+2. Sensei opens a task containing the matching shortcut.
+3. Perform that action once with the shortcut.
+4. The task closes.
 
-## Principles
-
-- Collect semantic actions, not typed characters.
-- Keep history local by default.
-- Explain every observation and recommendation.
-- Let the user pause, inspect, export, or delete all data.
-- Never inspect clipboard contents, terminal text, passwords, or document contents.
-
-## Experience
-
-1. Observe an action such as opening the browser from a menu.
-2. Match it to an existing Omarchy shortcut such as `SUPER + B`.
-3. Show the highest-impact unlearned shortcut in the panel.
-4. Remove the lesson after the first matching shortcut use.
-5. Compare recognized mouse/menu actions with Omarchy shortcuts across the last seven days.
-6. For actions without shortcuts, create a reviewable, privacy-safe context bundle that an agent can use to propose one.
-
-The panel is keyboard navigable: use the arrow keys or `h/j/k/l` to inspect days, `Tab`/`Shift+Tab` to switch bar panels, and `Esc` to close.
-
-The personalized Sensei Path reveals only observed skills. Nodes progress from Discovered to Learned after one shortcut use and Mastered after five uses. Branch Trials celebrate meaningful clusters of mastered Omarchy skills without generating notifications or nagging the user.
+Using the mouse for that action again reopens the task. Sensei never records ordinary typing, clipboard contents, terminal text, passwords, or document contents.
 
 ## Install
 
@@ -36,59 +19,20 @@ cd ~/.config/omarchy/plugins/io.github.nilszeilon.omarchy-sensei
 ./install.sh
 ```
 
-The installer builds the small local collector, creates timestamped backups, adds a managed Sensei loader before Omarchy's default Hyprland bindings, and adds managed action overrides to the user-owned Omarchy menu extension. It never edits `/usr/share/omarchy`.
+The installer builds the local collector and connects recognized Omarchy shortcuts and matching menu actions. It never edits `/usr/share/omarchy`.
 
-Move it to the right section of the bar if needed:
+## Controls
 
-```sh
-omarchy bar move io.github.nilszeilon.omarchy-sensei --section right
-```
-
-## Development
-
-```sh
-go install ./cmd/omarchy-sensei
-omarchy plugin validate .
-qmllint -I "$OMARCHY_PATH/shell" BarWidget.qml Panel.qml
-```
-
-Semantic events can also be recorded directly:
-
-```sh
-omarchy-sensei record \
-  --action launch_browser \
-  --title "Open browser" \
-  --trigger menu \
-  --shortcut "SUPER+B"
-
-omarchy-sensei record \
-  --action launch_browser \
-  --title "Open browser" \
-  --trigger shortcut \
-  --shortcut "SUPER+B"
-```
-
-Sensei stores these events as private JSON Lines under `$XDG_STATE_HOME/omarchy-sensei/` (or `~/.local/state/omarchy-sensei/`). Each event contains an action, trigger class, and known shortcut—never the text the user typed.
-
-Pause or resume observation without affecting the integrations:
-
-```sh
-omarchy-sensei pause
-omarchy-sensei resume
-```
-
-Inspect or delete all recorded activity:
+Use arrows or `h/j/k/l` to move through tasks, `Tab`/`Shift+Tab` to switch bar panels, and `Esc` to close.
 
 ```sh
 omarchy-sensei status
+omarchy-sensei pause
+omarchy-sensei resume
 omarchy-sensei clear
 ```
 
-Saved changes in an installed user plugin reload automatically. To force discovery:
-
-```sh
-omarchy-shell shell rescanPlugins
-```
+Events stay in `$XDG_STATE_HOME/omarchy-sensei/` or `~/.local/state/omarchy-sensei/`.
 
 ## Remove
 
@@ -97,8 +41,6 @@ omarchy-sensei uninstall
 hyprctl reload
 omarchy plugin remove io.github.nilszeilon.omarchy-sensei
 ```
-
-See [the architecture](docs/architecture.md) and [privacy contract](docs/privacy.md) for the proposed MVP boundaries.
 
 ## License
 

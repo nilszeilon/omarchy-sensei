@@ -5,14 +5,7 @@ Item {
   id: root
   visible: false
 
-  property var mouseDays: []
-  property var shortcutDays: []
-  property int maxCount: 0
-  property var hint: null
-  property var branches: []
-  property var trial: null
-  property int xp: 0
-  property int level: 1
+  property var tasks: []
   property bool paused: false
   property string error: ""
 
@@ -23,25 +16,18 @@ Item {
   function applySnapshot(output) {
     try {
       var parsed = JSON.parse(String(output || "{}"))
-      mouseDays = parsed.mouseDays || []
-      shortcutDays = parsed.shortcutDays || []
-      maxCount = Number(parsed.maxCount || 0)
-      hint = parsed.hint || null
-      branches = parsed.branches || []
-      trial = parsed.trial || null
-      xp = Number(parsed.xp || 0)
-      level = Number(parsed.level || 1)
+      tasks = parsed.tasks || []
       paused = parsed.paused === true
       error = ""
     } catch (e) {
-      error = "Sensei could not read its local activity data."
+      error = "Sensei could not read its local tasks."
     }
   }
 
   Component.onCompleted: refresh()
 
   Timer {
-    interval: 60000
+    interval: 2000
     repeat: true
     running: true
     onTriggered: root.refresh()

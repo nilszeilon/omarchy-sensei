@@ -1,43 +1,14 @@
 # Architecture
 
-Omarchy Sensei is planned as two cooperating pieces:
+Sensei stores an append-only local stream of semantic actions. Each event contains an action identifier, trigger class, title, known shortcut, and timestamp. It never stores typed text.
 
-1. A Quickshell bar widget and panel containing a personalized skill path, one tailored Trial, aligned seven-day mouse/menu and shortcut graphs, and one lesson.
-2. A small local companion CLI for normalizing semantic events, matching actions to shortcuts, and persisting local history.
+The snapshot folds events in chronological order into open tasks:
 
-## Automatic observation
+- A recognized `mouse` or `menu` event opens the task for that action.
+- Further slow uses increment the same task instead of creating duplicates.
+- A matching `shortcut` event closes the task.
+- A later slow event reopens it.
 
-`omarchy-sensei setup` installs two user-owned integrations:
+The Quickshell panel renders only these open tasks and refreshes every two seconds. There are no scores, charts, skill trees, trials, notifications, or manually completed checkboxes. The required behavior itself is the completion action.
 
-- A small Lua module loaded before Omarchy's default bindings wraps `o.bind`. Every described keyboard binding keeps its original behavior and gains a second semantic recording action. Mouse bindings, switches, and undescribed keys are ignored.
-- Managed overrides in `~/.config/omarchy/extensions/omarchy-menu.jsonc` wrap menu actions that have known shortcut equivalents. The original action still runs after the local event is recorded.
-
-Both integrations are delimited by managed markers, create timestamped backups, and can be removed without discarding unrelated user configuration. Packaged files under `/usr/share/omarchy` remain untouched.
-
-## Event model
-
-The minimum useful event describes intent without content:
-
-```json
-{
-  "occurredAt": "2026-08-20T12:00:00Z",
-  "action": "launch_browser",
-  "trigger": "menu",
-  "shortcut": "SUPER+B",
-  "durationMs": 1850
-}
-```
-
-The MVP should prefer explicit Omarchy and Hyprland event sources over global input capture. Mouse coordinates and key values are not part of the event model.
-
-## Recommendation loop
-
-- Recommend the highest-impact observed slow action as soon as it has a known shortcut.
-- Rate-limit hints and provide snooze and disable controls.
-- Count a shortcut as learned only after repeat use across multiple sessions.
-- Estimate time saved from measured local baselines and label the number as an estimate.
-- Require user review before sending any context to an agent.
-
-## Storage
-
-The first release uses a private JSON Lines event log so the complete data path stays inspectable. Two aligned graphs compare recognized menu/mouse actions and Omarchy shortcuts over the last seven days on one shared scale. The panel shows only the highest-value menu or mouse action whose known shortcut has never been used; the first matching shortcut use removes that lesson. Sensei does not send hint notifications. Observation can be paused, resumed, inspected, or cleared from the CLI.
+The current integration observes semantic Omarchy shortcuts plus explicitly matched menu actions. Adding broader mouse observations requires a reliable semantic mapping to a keyboard action; raw click logging is intentionally out of scope.

@@ -5,128 +5,57 @@ import (
 	"time"
 )
 
-func TestBuildSnapshotChoosesWorstUnlearnedAction(t *testing.T) {
-	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
-	var events []Event
-	for i := 0; i < 7; i++ {
-		events = append(events, Event{OccurredAt: now, Action: "browser", Title: "Open browser", Trigger: "menu", Shortcut: "SUPER+B"})
-	}
-	for i := 0; i < 3; i++ {
-		events = append(events, Event{OccurredAt: now, Action: "terminal", Title: "Open terminal", Trigger: "mouse", Shortcut: "SUPER+RETURN"})
-	}
-
-	result := buildSnapshot(events, now)
-	if result.Hint == nil || result.Hint.Action != "browser" {
-		t.Fatalf("expected browser hint, got %#v", result.Hint)
-	}
-	if result.Hint.Avoided != 7 {
-		t.Fatalf("expected score 7, got %d", result.Hint.Avoided)
-	}
-	if got := countForDay(result.ShortcutDays, "2026-08-20"); got != 0 {
-		t.Fatalf("expected no shortcuts today, got %d", got)
-	}
-}
-
-func countForDay(days []Day, date string) int {
-	for _, day := range days {
-		if day.Date == date {
-			return day.Count
-		}
-	}
-	return -1
-}
-
-func TestBuildSnapshotShowsHintAfterFirstSlowUse(t *testing.T) {
-	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
-	events := []Event{{
+func TestSlowActionOpensTask(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	result := buildSnapshot([]Event{{
 		OccurredAt: now,
-		Action:     "screenshot",
-		Title:      "Take screenshot",
-		Trigger:    "menu",
-		Shortcut:   "SUPER+SHIFT+S",
-	}}
+		Action:     "focus-window",
+		Title:      "Focus window",
+		Trigger:    "mouse",
+		Shortcut:   "SUPER + LEFT/RIGHT",
+	}}, now)
 
-	result := buildSnapshot(events, now)
-	if result.Hint == nil || result.Hint.Action != "screenshot" {
-		t.Fatalf("expected immediate screenshot hint, got %#v", result.Hint)
+	if len(result.Tasks) != 1 {
+		t.Fatalf("expected one open task, got %#v", result.Tasks)
 	}
-	if result.Hint.SlowUses != 1 {
-		t.Fatalf("expected one slow use, got %d", result.Hint.SlowUses)
+	if result.Tasks[0].Shortcut != "SUPER + LEFT/RIGHT" {
+		t.Fatalf("expected keyboard hint, got %#v", result.Tasks[0])
 	}
 }
 
-func TestBuildSnapshotMarksToday(t *testing.T) {
-	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
-	result := buildSnapshot(nil, now)
-
-	for _, day := range result.ShortcutDays {
-		if day.Date == "2026-08-20" {
-			if !day.Today {
-				t.Fatal("expected current day to be marked as today")
-			}
-			return
-		}
-	}
-	t.Fatal("expected current day in snapshot")
-}
-
-func TestBuildSnapshotComparesLastSevenDays(t *testing.T) {
-	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
+func TestMatchingShortcutClosesTask(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
 	events := []Event{
-		{OccurredAt: now.AddDate(0, 0, -6), Action: "browser", Trigger: "menu"},
-		{OccurredAt: now.AddDate(0, 0, -6), Action: "terminal", Trigger: "shortcut"},
-		{OccurredAt: now, Action: "browser", Trigger: "mouse"},
-		{OccurredAt: now, Action: "terminal", Trigger: "shortcut"},
-		{OccurredAt: now.AddDate(0, 0, -7), Action: "ignored", Trigger: "shortcut"},
+		{OccurredAt: now, Action: "browser", Title: "Open browser", Trigger: "menu", Shortcut: "SUPER + B"},
+		{OccurredAt: now.Add(time.Second), Action: "browser", Title: "Open browser", Trigger: "shortcut", Shortcut: "SUPER + B"},
 	}
 
-	result := buildSnapshot(events, now)
-	if len(result.MouseDays) != 7 || len(result.ShortcutDays) != 7 {
-		t.Fatalf("expected two seven-day series, got %d and %d", len(result.MouseDays), len(result.ShortcutDays))
-	}
-	if got := countForDay(result.MouseDays, "2026-08-14"); got != 1 {
-		t.Fatalf("expected one mouse/menu action six days ago, got %d", got)
-	}
-	if got := countForDay(result.ShortcutDays, "2026-08-20"); got != 1 {
-		t.Fatalf("expected one shortcut today, got %d", got)
+	if tasks := buildSnapshot(events, now).Tasks; len(tasks) != 0 {
+		t.Fatalf("expected shortcut to close task, got %#v", tasks)
 	}
 }
 
-func TestBuildSnapshotHidesLearnedAction(t *testing.T) {
-	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
-	var events []Event
-	for i := 0; i < 8; i++ {
-		events = append(events, Event{OccurredAt: now, Action: "browser", Title: "Open browser", Trigger: "menu", Shortcut: "SUPER+B"})
+func TestSlowActionAfterShortcutReopensTask(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	events := []Event{
+		{OccurredAt: now, Action: "browser", Title: "Open browser", Trigger: "shortcut", Shortcut: "SUPER + B"},
+		{OccurredAt: now.Add(time.Second), Action: "browser", Title: "Open browser", Trigger: "menu", Shortcut: "SUPER + B"},
 	}
-	events = append(events, Event{OccurredAt: now, Action: "browser", Title: "Open browser", Trigger: "shortcut", Shortcut: "SUPER+B"})
 
-	if hint := buildSnapshot(events, now).Hint; hint != nil {
-		t.Fatalf("expected action to be hidden after its first shortcut use, got %#v", hint)
+	if tasks := buildSnapshot(events, now).Tasks; len(tasks) != 1 {
+		t.Fatalf("expected later slow use to reopen task, got %#v", tasks)
 	}
 }
 
-func TestBuildSnapshotBuildsPersonalSkillPath(t *testing.T) {
-	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
-	var events []Event
-	for i := 0; i < 6; i++ {
-		events = append(events, Event{OccurredAt: now, Action: "focus-on-left-window", Title: "Focus left", Trigger: "shortcut", Shortcut: "SUPER+LEFT"})
+func TestRepeatedSlowUsesStayOneTask(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	events := []Event{
+		{OccurredAt: now, Action: "screenshot", Title: "Screenshot", Trigger: "menu", Shortcut: "PRINT"},
+		{OccurredAt: now.Add(time.Second), Action: "screenshot", Title: "Screenshot", Trigger: "mouse", Shortcut: "PRINT"},
 	}
-	events = append(events,
-		Event{OccurredAt: now, Action: "swap-window-right", Title: "Swap right", Trigger: "shortcut", Shortcut: "SUPER+SHIFT+RIGHT"},
-		Event{OccurredAt: now, Action: "screenshot", Title: "Screenshot", Trigger: "menu", Shortcut: "PRINT"},
-	)
 
-	result := buildSnapshot(events, now)
-	if result.Level != 1 || result.XP != 7 {
-		t.Fatalf("expected level 1 with 7 XP, got level %d with %d XP", result.Level, result.XP)
-	}
-	if len(result.Branches) < 2 || result.Branches[0].Name != "Window Arts" {
-		t.Fatalf("expected personalized window branch first, got %#v", result.Branches)
-	}
-	if result.Branches[0].Skills[0].State != "mastered" {
-		t.Fatalf("expected most-used window skill mastered, got %#v", result.Branches[0].Skills[0])
-	}
-	if result.Trial == nil || result.Trial.Title != "The Window Tamer" {
-		t.Fatalf("expected window trial, got %#v", result.Trial)
+	tasks := buildSnapshot(events, now).Tasks
+	if len(tasks) != 1 || tasks[0].SlowUses != 2 {
+		t.Fatalf("expected one task with two slow uses, got %#v", tasks)
 	}
 }

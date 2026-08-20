@@ -22,52 +22,17 @@ type Event struct {
 	Shortcut   string    `json:"shortcut,omitempty"`
 }
 
-type Day struct {
-	Date  string `json:"date"`
-	Count int    `json:"count"`
-	Today bool   `json:"today,omitempty"`
-}
-
-type Hint struct {
-	Action   string `json:"action"`
-	Title    string `json:"title"`
-	Shortcut string `json:"shortcut"`
-	SlowUses int    `json:"slowUses"`
-	FastUses int    `json:"fastUses"`
-	Avoided  int    `json:"avoided"`
-}
-
-type Skill struct {
-	Action   string `json:"action"`
-	Title    string `json:"title"`
-	Shortcut string `json:"shortcut"`
-	State    string `json:"state"`
-	Uses     int    `json:"uses"`
-}
-
-type Branch struct {
-	Name     string  `json:"name"`
-	Glyph    string  `json:"glyph"`
-	Skills   []Skill `json:"skills"`
-	Mastered int     `json:"mastered"`
-}
-
-type Trial struct {
-	Title       string `json:"title"`
-	Description string `json:"description"`
-	Defeated    bool   `json:"defeated"`
+type Task struct {
+	Action   string    `json:"action"`
+	Title    string    `json:"title"`
+	Shortcut string    `json:"shortcut"`
+	OpenedAt time.Time `json:"openedAt"`
+	SlowUses int       `json:"slowUses"`
 }
 
 type Snapshot struct {
-	MouseDays    []Day    `json:"mouseDays"`
-	ShortcutDays []Day    `json:"shortcutDays"`
-	MaxCount     int      `json:"maxCount"`
-	Hint         *Hint    `json:"hint"`
-	Branches     []Branch `json:"branches"`
-	Trial        *Trial   `json:"trial"`
-	XP           int      `json:"xp"`
-	Level        int      `json:"level"`
-	Paused       bool     `json:"paused"`
+	Tasks  []Task `json:"tasks"`
+	Paused bool   `json:"paused"`
 }
 
 func main() {
@@ -318,173 +283,43 @@ func printStatus(paths Paths) {
 }
 
 func buildSnapshot(events []Event, now time.Time) Snapshot {
-	localNow := now.In(time.Local)
-	today := dayStart(localNow)
-	start := today.AddDate(0, 0, -6)
-	shortcutCounts := map[string]int{}
-	mouseCounts := map[string]int{}
-	type score struct {
-		hint Hint
-	}
-	scores := map[string]*score{}
-
-	for _, event := range events {
-		date := event.OccurredAt.In(time.Local).Format("2006-01-02")
-		if !event.OccurredAt.Before(start) {
-			if event.Trigger == "shortcut" {
-				shortcutCounts[date]++
-			} else if event.Trigger == "menu" || event.Trigger == "mouse" {
-				mouseCounts[date]++
-			}
-		}
-		entry := scores[event.Action]
-		if entry == nil {
-			entry = &score{hint: Hint{Action: event.Action, Title: event.Title, Shortcut: event.Shortcut}}
-			scores[event.Action] = entry
-		}
-		if event.Shortcut != "" {
-			entry.hint.Shortcut = event.Shortcut
-		}
-		if event.Trigger == "shortcut" {
-			entry.hint.FastUses++
-		} else if event.Trigger == "menu" || event.Trigger == "mouse" {
-			entry.hint.SlowUses++
-		}
-	}
-
-	result := Snapshot{
-		MouseDays:    make([]Day, 0, 7),
-		ShortcutDays: make([]Day, 0, 7),
-	}
-	for day := start; !day.After(today); day = day.AddDate(0, 0, 1) {
-		date := day.Format("2006-01-02")
-		mouseCount := mouseCounts[date]
-		shortcutCount := shortcutCounts[date]
-		result.MouseDays = append(result.MouseDays, Day{Date: date, Count: mouseCount, Today: day.Equal(today)})
-		result.ShortcutDays = append(result.ShortcutDays, Day{Date: date, Count: shortcutCount, Today: day.Equal(today)})
-		if mouseCount > result.MaxCount {
-			result.MaxCount = mouseCount
-		}
-		if shortcutCount > result.MaxCount {
-			result.MaxCount = shortcutCount
-		}
-	}
-
-	var candidates []Hint
-	for _, entry := range scores {
-		hint := entry.hint
-		if hint.Shortcut == "" || hint.SlowUses < 1 || hint.FastUses > 0 {
-			continue
-		}
-		hint.Avoided = hint.SlowUses - hint.FastUses
-		candidates = append(candidates, hint)
-	}
-	sort.Slice(candidates, func(i, j int) bool {
-		if candidates[i].Avoided == candidates[j].Avoided {
-			return candidates[i].SlowUses > candidates[j].SlowUses
-		}
-		return candidates[i].Avoided > candidates[j].Avoided
+	_ = now
+	ordered := append([]Event(nil), events...)
+	sort.SliceStable(ordered, func(i, j int) bool {
+		return ordered[i].OccurredAt.Before(ordered[j].OccurredAt)
 	})
-	if len(candidates) > 0 {
-		result.Hint = &candidates[0]
+
+	open := map[string]*Task{}
+	for _, event := range ordered {
+		if event.Action == "" {
+			continue
+		}
+		switch event.Trigger {
+		case "menu", "mouse":
+			if event.Shortcut == "" {
+				continue
+			}
+			task := open[event.Action]
+			if task == nil {
+				task = &Task{Action: event.Action, OpenedAt: event.OccurredAt}
+				open[event.Action] = task
+			}
+			task.Title = event.Title
+			task.Shortcut = event.Shortcut
+			task.SlowUses++
+		case "shortcut":
+			delete(open, event.Action)
+		}
 	}
 
-	branchSkills := map[string][]Skill{}
-	for _, entry := range scores {
-		hint := entry.hint
-		if hint.Title == "" || hint.Shortcut == "" || (hint.FastUses == 0 && hint.SlowUses == 0) {
-			continue
-		}
-		state := "discovered"
-		if hint.FastUses >= 5 {
-			state = "mastered"
-		} else if hint.FastUses > 0 {
-			state = "learned"
-		}
-		result.XP += hint.FastUses
-		name, _ := skillBranch(hint.Action)
-		branchSkills[name] = append(branchSkills[name], Skill{
-			Action: hint.Action, Title: hint.Title, Shortcut: hint.Shortcut,
-			State: state, Uses: hint.FastUses,
-		})
+	result := Snapshot{Tasks: make([]Task, 0, len(open))}
+	for _, task := range open {
+		result.Tasks = append(result.Tasks, *task)
 	}
-	result.Level = 1 + result.XP/25
-	branchOrder := []string{"Window Arts", "Workspace Way", "Swift Launching", "Capture Craft", "System Lore"}
-	for _, name := range branchOrder {
-		skills := branchSkills[name]
-		if len(skills) == 0 {
-			continue
-		}
-		sort.Slice(skills, func(i, j int) bool {
-			if skills[i].Uses == skills[j].Uses {
-				return skills[i].Title < skills[j].Title
-			}
-			return skills[i].Uses > skills[j].Uses
-		})
-		if len(skills) > 4 {
-			skills = skills[:4]
-		}
-		_, glyph := skillBranch(skills[0].Action)
-		branch := Branch{Name: name, Glyph: glyph, Skills: skills}
-		for _, skill := range skills {
-			if skill.State == "mastered" {
-				branch.Mastered++
-			}
-		}
-		result.Branches = append(result.Branches, branch)
-		if len(result.Branches) == 3 {
-			break
-		}
-	}
-	if len(result.Branches) > 0 {
-		branch := result.Branches[0]
-		goal := len(branch.Skills)
-		if goal > 3 {
-			goal = 3
-		}
-		defeated := branch.Mastered >= goal
-		description := fmt.Sprintf("Master %d %s skills", goal, branch.Name)
-		if defeated {
-			description = fmt.Sprintf("%d skills mastered", branch.Mastered)
-		}
-		result.Trial = &Trial{Title: branchTrial(branch.Name), Description: description, Defeated: defeated}
-	}
+	sort.Slice(result.Tasks, func(i, j int) bool {
+		return result.Tasks[i].OpenedAt.Before(result.Tasks[j].OpenedAt)
+	})
 	return result
-}
-
-func skillBranch(action string) (string, string) {
-	switch {
-	case strings.Contains(action, "workspace"):
-		return "Workspace Way", "◇"
-	case strings.Contains(action, "window") || strings.Contains(action, "focus") || strings.Contains(action, "swap"):
-		return "Window Arts", "◆"
-	case strings.Contains(action, "screenshot") || strings.Contains(action, "capture") || strings.Contains(action, "record") || strings.Contains(action, "color"):
-		return "Capture Craft", "◈"
-	case strings.Contains(action, "terminal") || strings.Contains(action, "browser") || strings.Contains(action, "launch"):
-		return "Swift Launching", "▲"
-	default:
-		return "System Lore", "✦"
-	}
-}
-
-func branchTrial(branch string) string {
-	switch branch {
-	case "Window Arts":
-		return "The Window Tamer"
-	case "Workspace Way":
-		return "The Workspace Wanderer"
-	case "Swift Launching":
-		return "The Zero-Mouse Start"
-	case "Capture Craft":
-		return "The Capture Master"
-	default:
-		return "The Omarchy Initiate"
-	}
-}
-
-func dayStart(value time.Time) time.Time {
-	year, month, day := value.Date()
-	return time.Date(year, month, day, 0, 0, 0, 0, value.Location())
 }
 
 func fatal(message string) {
