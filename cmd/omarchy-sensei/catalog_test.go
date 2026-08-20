@@ -1,9 +1,36 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
+
+func TestLoadMergedMenuUsesUserActionAndIgnoresManagedBlock(t *testing.T) {
+	dir := t.TempDir()
+	defaults := filepath.Join(dir, "default.jsonc")
+	user := filepath.Join(dir, "user.jsonc")
+	if err := os.WriteFile(defaults, []byte(`{"trigger.test":{"label":"Default","aliases":["default-alias"],"action":"old"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	userData := `{
+  "trigger.test": {"label":"Mine","aliases":["mine"],"action":"new"},
+  // BEGIN OMARCHY SENSEI (managed by omarchy-sensei setup)
+  "trigger.generated": {"label":"Generated","action":"wrapped"},
+  // END OMARCHY SENSEI
+}`
+	if err := os.WriteFile(user, []byte(userData), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	items, err := loadMergedMenu(Paths{DefaultMenu: defaults, MenuExtension: user})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(items) != 1 || items[0].Label != "Mine" || items[0].Action != "new" || items[0].Aliases[0] != "mine" {
+		t.Fatalf("unexpected merged menu: %#v", items)
+	}
+}
 
 func TestParseMenuJSONCPreservesMetadata(t *testing.T) {
 	items, err := parseMenuJSONC([]byte(`{

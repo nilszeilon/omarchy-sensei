@@ -39,7 +39,7 @@ type Snapshot struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal("usage: omarchy-sensei <setup|refresh|catalog|uninstall|record|run|snapshot|pause|resume|clear|status>")
+		fatal("usage: omarchy-sensei <setup|refresh|catalog|doctor|uninstall|record|run|snapshot|pause|resume|clear|status>")
 	}
 
 	paths, err := senseiPaths()
@@ -61,6 +61,8 @@ func main() {
 		fmt.Printf("Sensei catalog refreshed: %d coached menu actions, %d unmatched.\n", len(catalog.Matches), len(catalog.UnmatchedMenu))
 	case "catalog":
 		printCatalog(paths, os.Args[2:])
+	case "doctor":
+		doctor(paths)
 	case "uninstall":
 		if err := uninstallIntegration(paths); err != nil {
 			fatal(err.Error())
@@ -89,6 +91,34 @@ func main() {
 	default:
 		fatal("unknown command: " + os.Args[1])
 	}
+}
+
+func doctor(paths Paths) {
+	catalog, err := loadCatalog(paths)
+	if err != nil {
+		fatal("catalog: " + err.Error())
+	}
+	if len(catalog.Matches) == 0 {
+		fatal("catalog has no coached actions")
+	}
+	if !integrationInstalled(paths) {
+		fatal("Hyprland integration is not installed")
+	}
+	menu, err := os.ReadFile(paths.MenuExtension)
+	if err != nil || !strings.Contains(string(menu), menuStart) {
+		fatal("generated menu integration is not installed")
+	}
+	observer, err := os.ReadFile(paths.SenseiLua)
+	if err != nil || !strings.Contains(string(observer), "hl.dispatch(dispatcher)") {
+		fatal("generic shortcut observer is not installed")
+	}
+	if output, err := exec.Command("systemctl", "--user", "is-active", "omarchy-sensei-refresh.path").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "active" {
+		fatal("catalog refresh watcher is not active")
+	}
+	if output, err := exec.Command("hyprctl", "configerrors").Output(); err != nil || strings.TrimSpace(string(output)) != "" {
+		fatal("Hyprland reports configuration errors")
+	}
+	fmt.Printf("Sensei is healthy: %d coached menu actions, %d unmatched menu actions, refresh watcher active.\n", len(catalog.Matches), len(catalog.UnmatchedMenu))
 }
 
 func record(paths Paths, args []string) {

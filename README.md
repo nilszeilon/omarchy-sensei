@@ -29,6 +29,7 @@ The catalog refreshes automatically after menu or personal binding changes and a
 omarchy-sensei catalog
 omarchy-sensei catalog --unmatched
 omarchy-sensei catalog --json
+omarchy-sensei doctor
 ```
 
 ## Controls

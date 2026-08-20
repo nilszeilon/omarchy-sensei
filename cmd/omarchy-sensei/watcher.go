@@ -30,8 +30,9 @@ Unit=omarchy-sensei-refresh.service
 WantedBy=default.target
 `, paths.DefaultMenu)
 	hook := `#!/usr/bin/env bash
-set -euo pipefail
-omarchy-sensei refresh
+if ! omarchy-sensei refresh; then
+  logger -t omarchy-sensei "Catalog refresh skipped after Omarchy update"
+fi
 `
 	for path, file := range map[string]struct {
 		data string
