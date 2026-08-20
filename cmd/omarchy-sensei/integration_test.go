@@ -42,6 +42,9 @@ func TestInstallHyprIntegrationIsIdempotent(t *testing.T) {
 	if strings.Contains(string(lua), "record_options.transparent") || !strings.Contains(string(lua), "hl.dispatch(dispatcher)") {
 		t.Fatalf("generated observer must dispatch the original action in one binding:\n%s", lua)
 	}
+	if !strings.Contains(string(lua), "dispatcher.__omarchy_dispatcher") {
+		t.Fatalf("generated observer must preserve Super+K source scanning:\n%s", lua)
+	}
 	if luac, err := exec.LookPath("luac"); err == nil {
 		if output, err := exec.Command(luac, "-p", paths.SenseiLua).CombinedOutput(); err != nil {
 			t.Fatalf("generated Lua is invalid: %v\n%s", err, output)
@@ -56,26 +59,34 @@ func TestMenuIntegrationPreservesUserEntriesAndUninstalls(t *testing.T) {
 	if err := os.WriteFile(paths.MenuExtension, []byte(original), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if err := installMenuIntegration(paths); err != nil {
+	matches := []CatalogMatch{{
+		Menu:       MenuItem{ID: "trigger.reminder.set", Parent: "trigger.reminder", Label: "Set one", Icon: "bell", Aliases: []string{"reminder-set", "remind"}, Action: "omarchy-reminder -i"},
+		Binding:    Binding{Description: "Set reminder", Shortcuts: []string{"SUPER CTRL + R"}},
+		Confidence: "token-exact",
+	}}
+	if err := installMenuIntegration(paths, Catalog{Matches: matches}); err != nil {
 		t.Fatal(err)
 	}
 	content, err := os.ReadFile(paths.MenuExtension)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(content), "personal.notes") || !strings.Contains(string(content), "trigger.capture.screenshot") {
+	if !strings.Contains(string(content), "personal.notes") || !strings.Contains(string(content), "trigger.reminder.set") {
 		t.Fatalf("expected user and Sensei entries:\n%s", content)
 	}
 	if !strings.Contains(string(content), `"aliases":["reminder-set","remind"]`) {
 		t.Fatalf("expected reminder route aliases to be preserved:\n%s", content)
 	}
-	block := strings.TrimSuffix(strings.TrimSpace(menuOverrideBlock()), ",")
+	block := strings.TrimSuffix(strings.TrimSpace(menuOverrideBlock(matches)), ",")
 	var overrides map[string]map[string]any
 	if err := json.Unmarshal([]byte("{"+block+"}"), &overrides); err != nil {
 		t.Fatalf("generated menu overrides are invalid: %v\n%s", err, block)
 	}
-	if len(overrides) != len(coachedActions) {
-		t.Fatalf("expected %d menu overrides, got %d", len(coachedActions), len(overrides))
+	if len(overrides) != len(matches) {
+		t.Fatalf("expected %d menu overrides, got %d", len(matches), len(overrides))
+	}
+	if overrides["trigger.reminder.set"]["icon"] != "bell" || overrides["trigger.reminder.set"]["label"] != "Set one" {
+		t.Fatalf("generated override lost menu metadata: %#v", overrides)
 	}
 	if err := removeManagedBlock(paths.MenuExtension, menuStart, menuEnd); err != nil {
 		t.Fatal(err)

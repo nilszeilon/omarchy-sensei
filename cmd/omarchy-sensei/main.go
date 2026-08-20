@@ -39,7 +39,7 @@ type Snapshot struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal("usage: omarchy-sensei <setup|uninstall|record|run|snapshot|pause|resume|clear|status>")
+		fatal("usage: omarchy-sensei <setup|refresh|catalog|uninstall|record|run|snapshot|pause|resume|clear|status>")
 	}
 
 	paths, err := senseiPaths()
@@ -53,6 +53,14 @@ func main() {
 			fatal(err.Error())
 		}
 		fmt.Println("Omarchy Sensei observation is installed. Run `hyprctl reload` to activate it.")
+	case "refresh":
+		catalog, err := refreshIntegration(paths)
+		if err != nil {
+			fatal(err.Error())
+		}
+		fmt.Printf("Sensei catalog refreshed: %d coached menu actions, %d unmatched.\n", len(catalog.Matches), len(catalog.UnmatchedMenu))
+	case "catalog":
+		printCatalog(paths, os.Args[2:])
 	case "uninstall":
 		if err := uninstallIntegration(paths); err != nil {
 			fatal(err.Error())
@@ -182,7 +190,11 @@ type Paths struct {
 	HyprlandConfig string
 	SenseiLua      string
 	MenuExtension  string
+	DefaultMenu    string
 	LocalBinary    string
+	RefreshService string
+	RefreshPath    string
+	PostUpdateHook string
 }
 
 func senseiPaths() (Paths, error) {
@@ -203,8 +215,46 @@ func senseiPaths() (Paths, error) {
 		HyprlandConfig: filepath.Join(home, ".config", "hypr", "hyprland.lua"),
 		SenseiLua:      filepath.Join(home, ".config", "hypr", "sensei.lua"),
 		MenuExtension:  filepath.Join(home, ".config", "omarchy", "extensions", "omarchy-menu.jsonc"),
+		DefaultMenu:    filepath.Join("/usr/share/omarchy", "default", "omarchy", "omarchy-menu.jsonc"),
 		LocalBinary:    filepath.Join(home, ".local", "bin", "omarchy-sensei"),
+		RefreshService: filepath.Join(home, ".config", "systemd", "user", "omarchy-sensei-refresh.service"),
+		RefreshPath:    filepath.Join(home, ".config", "systemd", "user", "omarchy-sensei-refresh.path"),
+		PostUpdateHook: filepath.Join(home, ".config", "omarchy", "hooks", "post-update.d", "omarchy-sensei"),
 	}, nil
+}
+
+func printCatalog(paths Paths, args []string) {
+	flags := flag.NewFlagSet("catalog", flag.ExitOnError)
+	unmatched := flags.Bool("unmatched", false, "show only unmatched menu actions and bindings")
+	jsonOutput := flags.Bool("json", false, "print machine-readable JSON")
+	_ = flags.Parse(args)
+	catalog, err := loadCatalog(paths)
+	if err != nil {
+		fatal(err.Error())
+	}
+	if *jsonOutput {
+		if err := json.NewEncoder(os.Stdout).Encode(catalog); err != nil {
+			fatal(err.Error())
+		}
+		return
+	}
+	if !*unmatched {
+		for _, match := range catalog.Matches {
+			fmt.Printf("✓ %-38s → %-32s %s\n", match.Menu.ID, match.Binding.Description, strings.Join(match.Binding.Shortcuts, " / "))
+		}
+	}
+	for _, item := range catalog.UnmatchedMenu {
+		fmt.Printf("· %-38s (no shortcut match for %q)\n", item.ID, item.Label)
+	}
+	if *unmatched {
+		for _, binding := range catalog.UnmatchedBindings {
+			fmt.Printf("⌨ %-38s (no matching menu action; %s)\n", binding.Description, strings.Join(binding.Shortcuts, " / "))
+		}
+	}
+	if !*unmatched {
+		fmt.Printf("\n%d coached menu actions; %d unmatched menu actions; %d shortcut-only actions.\n",
+			len(catalog.Matches), len(catalog.UnmatchedMenu), len(catalog.UnmatchedBindings))
+	}
 }
 
 func recordEvent(paths Paths, event Event) error {
