@@ -31,6 +31,9 @@ func setupIntegration(paths Paths) error {
 	if err := installMenuIntegration(paths, catalog); err != nil {
 		return fmt.Errorf("install menu integration: %w", err)
 	}
+	if err := installBindingCache(paths, catalog); err != nil {
+		return fmt.Errorf("install click binding cache: %w", err)
+	}
 	if err := installRefreshWatcher(paths); err != nil {
 		return fmt.Errorf("install catalog refresh watcher: %w", err)
 	}
@@ -45,7 +48,37 @@ func refreshIntegration(paths Paths) (Catalog, error) {
 	if err := installMenuIntegration(paths, catalog); err != nil {
 		return Catalog{}, err
 	}
+	if err := installBindingCache(paths, catalog); err != nil {
+		return Catalog{}, err
+	}
 	return catalog, nil
+}
+
+func installBindingCache(paths Paths, catalog Catalog) error {
+	bindings := make([]Binding, 0, len(catalog.Matches)+len(catalog.UnmatchedBindings))
+	seen := map[string]bool{}
+	for _, match := range catalog.Matches {
+		key := normalizedPhrase(match.Binding.Description)
+		if !seen[key] {
+			bindings = append(bindings, match.Binding)
+			seen[key] = true
+		}
+	}
+	for _, binding := range catalog.UnmatchedBindings {
+		key := normalizedPhrase(binding.Description)
+		if !seen[key] {
+			bindings = append(bindings, binding)
+			seen[key] = true
+		}
+	}
+	data, err := json.Marshal(bindings)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(paths.BindingCache), 0o700); err != nil {
+		return err
+	}
+	return writeAtomic(paths.BindingCache, append(data, '\n'), 0o600)
 }
 
 func uninstallIntegration(paths Paths) error {

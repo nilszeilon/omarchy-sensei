@@ -39,7 +39,7 @@ type Snapshot struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal("usage: omarchy-sensei <setup|refresh|catalog|doctor|uninstall|record|run|snapshot|pause|resume|clear|status>")
+		fatal("usage: omarchy-sensei <setup|refresh|catalog|doctor|uninstall|record|coach-click|run|snapshot|pause|resume|clear|status>")
 	}
 
 	paths, err := senseiPaths()
@@ -70,6 +70,8 @@ func main() {
 		fmt.Println("Omarchy Sensei observation was removed. Your activity data was kept.")
 	case "record":
 		record(paths, os.Args[2:])
+	case "coach-click":
+		coachClick(paths, os.Args[2:])
 	case "run":
 		run(paths, os.Args[2:])
 	case "snapshot":
@@ -93,6 +95,112 @@ func main() {
 	}
 }
 
+func coachClick(paths Paths, args []string) {
+	flags := flag.NewFlagSet("coach-click", flag.ExitOnError)
+	module := flags.String("module", "", "Omarchy bar module that received the click")
+	workspace := flags.Int("workspace", 0, "semantic workspace number, when clicked")
+	region := flags.String("region", "", "bar region containing the module")
+	panelIndex := flags.Int("panel-index", 0, "one-based keyboard panel index")
+	_ = flags.Parse(args)
+
+	moduleID := strings.TrimSpace(*module)
+	if moduleID == "" {
+		fatal("coach-click requires --module")
+	}
+
+	bindings, err := loadBindingCache(paths.BindingCache)
+	if err != nil {
+		// A click must never be delayed or broken by stale diagnostics. The
+		// setup/refresh watcher rebuilds this tiny semantic cache after remaps.
+		return
+	}
+	binding, ok := resolveClickBinding(bindings, ClickContext{
+		Module:     moduleID,
+		Workspace:  *workspace,
+		Region:     strings.TrimSpace(*region),
+		PanelIndex: *panelIndex,
+	})
+	if !ok || len(binding.Shortcuts) == 0 {
+		return
+	}
+
+	if err := recordEvent(paths, Event{
+		OccurredAt: time.Now(),
+		Action:     actionID(binding.Description),
+		Title:      binding.Description,
+		Trigger:    "mouse",
+		Shortcut:   binding.Shortcuts[0],
+		Shortcuts:  binding.Shortcuts,
+	}); err != nil {
+		fatal(err.Error())
+	}
+}
+
+func loadBindingCache(path string) ([]Binding, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var bindings []Binding
+	if err := json.Unmarshal(data, &bindings); err != nil {
+		return nil, err
+	}
+	return bindings, nil
+}
+
+type ClickContext struct {
+	Module     string
+	Workspace  int
+	Region     string
+	PanelIndex int
+}
+
+func resolveClickBinding(bindings []Binding, click ClickContext) (Binding, bool) {
+	if click.Workspace > 0 && strings.Contains(strings.ToLower(click.Module), "workspace") {
+		return bindingWithDescription(bindings, fmt.Sprintf("Switch to workspace %d", click.Workspace))
+	}
+
+	for _, binding := range bindings {
+		if bindingTargetsModule(binding, click.Module) {
+			return binding, true
+		}
+	}
+
+	if strings.EqualFold(click.Region, "right") && click.PanelIndex > 0 {
+		return bindingWithDescription(bindings, fmt.Sprintf("Bar panel %d", click.PanelIndex))
+	}
+	return Binding{}, false
+}
+
+func bindingWithDescription(bindings []Binding, description string) (Binding, bool) {
+	for _, binding := range bindings {
+		if strings.EqualFold(strings.TrimSpace(binding.Description), description) {
+			return binding, true
+		}
+	}
+	return Binding{}, false
+}
+
+func bindingTargetsModule(binding Binding, module string) bool {
+	if !strings.EqualFold(binding.Dispatcher, "exec") || module == "" {
+		return false
+	}
+	fields := strings.Fields(binding.Argument)
+	foundShell, foundAction, foundModule := false, false, false
+	for _, field := range fields {
+		field = strings.Trim(field, "'\"")
+		switch {
+		case strings.HasSuffix(field, "omarchy-shell"):
+			foundShell = true
+		case field == "toggle" || field == "summon" || field == "open" || field == "show":
+			foundAction = true
+		case field == module:
+			foundModule = true
+		}
+	}
+	return foundShell && foundAction && foundModule
+}
+
 func doctor(paths Paths) {
 	catalog, err := loadCatalog(paths)
 	if err != nil {
@@ -111,6 +219,10 @@ func doctor(paths Paths) {
 	observer, err := os.ReadFile(paths.SenseiLua)
 	if err != nil || !strings.Contains(string(observer), "hl.dispatch(dispatcher)") {
 		fatal("generic shortcut observer is not installed")
+	}
+	bindings, err := loadBindingCache(paths.BindingCache)
+	if err != nil || len(bindings) == 0 {
+		fatal("semantic click binding cache is not installed")
 	}
 	if output, err := exec.Command("systemctl", "--user", "is-active", "omarchy-sensei-refresh.path").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "active" {
 		fatal("catalog refresh watcher is not active")
@@ -216,6 +328,7 @@ type Paths struct {
 	Home           string
 	StateDir       string
 	Events         string
+	BindingCache   string
 	Paused         string
 	HyprlandConfig string
 	SenseiLua      string
@@ -241,6 +354,7 @@ func senseiPaths() (Paths, error) {
 		Home:           home,
 		StateDir:       stateDir,
 		Events:         filepath.Join(stateDir, "events.jsonl"),
+		BindingCache:   filepath.Join(stateDir, "bindings.json"),
 		Paused:         filepath.Join(stateDir, "paused"),
 		HyprlandConfig: filepath.Join(home, ".config", "hypr", "hyprland.lua"),
 		SenseiLua:      filepath.Join(home, ".config", "hypr", "sensei.lua"),

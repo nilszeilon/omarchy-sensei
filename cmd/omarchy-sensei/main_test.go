@@ -119,3 +119,58 @@ func TestMergeShortcutsNormalizesModifierFormatting(t *testing.T) {
 		t.Fatalf("expected equivalent chords to be deduplicated, got %#v", got)
 	}
 }
+
+func TestResolveClickBindingWorkspace(t *testing.T) {
+	bindings := []Binding{
+		{Description: "Switch to workspace 4", Shortcuts: []string{"SUPER + 4"}, Dispatcher: "lua"},
+		{Description: "Bar panel 2", Shortcuts: []string{"SUPER CTRL + 2"}, Dispatcher: "exec"},
+	}
+
+	got, ok := resolveClickBinding(bindings, ClickContext{Module: "io.example.workspaces", Workspace: 4, Region: "left"})
+	if !ok || got.Description != "Switch to workspace 4" {
+		t.Fatalf("expected workspace binding, got %#v, %v", got, ok)
+	}
+}
+
+func TestResolveClickBindingDirectPanel(t *testing.T) {
+	bindings := []Binding{
+		{Description: "Bar panel 4", Shortcuts: []string{"SUPER CTRL + 4"}, Dispatcher: "exec", Argument: "omarchy-shell -q shell togglePanelAt right 4"},
+		{Description: "Bluetooth", Shortcuts: []string{"SUPER CTRL + B"}, Dispatcher: "exec", Argument: "omarchy-shell shell toggle omarchy.bluetooth"},
+	}
+
+	got, ok := resolveClickBinding(bindings, ClickContext{Module: "omarchy.bluetooth", Region: "right", PanelIndex: 4})
+	if !ok || got.Description != "Bluetooth" {
+		t.Fatalf("expected direct semantic panel binding to win, got %#v, %v", got, ok)
+	}
+}
+
+func TestResolveClickBindingPositionalPanel(t *testing.T) {
+	bindings := []Binding{
+		{Description: "Bar panel 3", Shortcuts: []string{"SUPER CTRL + 3"}, Dispatcher: "exec", Argument: "omarchy-shell -q shell togglePanelAt right 3"},
+	}
+
+	got, ok := resolveClickBinding(bindings, ClickContext{Module: "io.example.custom-panel", Region: "right", PanelIndex: 3})
+	if !ok || got.Description != "Bar panel 3" {
+		t.Fatalf("expected positional panel binding, got %#v, %v", got, ok)
+	}
+}
+
+func TestResolveClickBindingRejectsUnteachableClick(t *testing.T) {
+	bindings := []Binding{{Description: "Toggle weather", Shortcuts: []string{"SUPER + W"}, Dispatcher: "exec", Argument: "omarchy-notification-weather"}}
+	if got, ok := resolveClickBinding(bindings, ClickContext{Module: "omarchy.weather", Region: "center"}); ok {
+		t.Fatalf("expected unteachable click to be ignored, got %#v", got)
+	}
+}
+
+func TestBindingTargetsModuleRequiresExactSemanticCommand(t *testing.T) {
+	binding := Binding{Dispatcher: "exec", Argument: "omarchy-shell shell toggle omarchy.network"}
+	if !bindingTargetsModule(binding, "omarchy.network") {
+		t.Fatal("expected exact module command to match")
+	}
+	if bindingTargetsModule(binding, "omarchy.net") || bindingTargetsModule(binding, "omarchy.network.extra") {
+		t.Fatal("partial module ids must not match")
+	}
+	if bindingTargetsModule(Binding{Dispatcher: "exec", Argument: "notify-send omarchy.network"}, "omarchy.network") {
+		t.Fatal("non-shell commands must not match")
+	}
+}

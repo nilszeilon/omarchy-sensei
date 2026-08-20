@@ -13,8 +13,10 @@ The Quickshell panel renders only these open tasks and refreshes every two secon
 
 The integration observes every described Hyprland shortcut through one pass-through dispatcher. It dynamically merges Omarchy's default and user menu definitions, resolves the same bindings as Super+K, and instruments every menu leaf with a unique high-confidence command or semantic match. Ambiguous actions remain untouched and are visible through catalog diagnostics. There is no hardcoded action registry.
 
+The Sensei bar widget subscribes to Omarchy Shell's existing clickable-widget registry. It resolves the clicked button to its owning bar module while the semantic object is still available. Workspace widgets expose their workspace number directly. Panel widgets first match exact `omarchy-shell ... <module-id>` binding metadata, then fall back to the live right-side `Bar panel N` position. Only left clicks on the bar surface are eligible; clicks inside an open panel, clicks on Sensei itself, and widgets without a keyboard equivalent are ignored. One Sensei instance leads observation across multi-monitor copies to prevent duplicate events.
+
 Generated menu wrappers preserve the complete merged item metadata and execute the original command byte-for-byte. A user-level path unit refreshes the catalog after menu or personal binding edits, and an Omarchy post-update hook refreshes it after upgrades.
 
-Adding broader mouse observations still requires a reliable semantic mapping to a keyboard action; raw click or key logging is intentionally out of scope.
+Broader mouse observations still require a reliable semantic mapping to a keyboard action; raw click or key logging is intentionally out of scope.
 
-Before a menu or mouse event is stored, the collector reads the same resolved keybinding list used by Omarchy's Super+K panel. Every active binding with the matching description is stored and displayed, including Lua, keycode, and user-remapped alternatives.
+The catalog refresh writes a small local cache of the same resolved bindings used by Omarchy's Super+K panel. Mouse clicks are matched against that cache without delaying their original UI action. Every active binding with the matching description is stored and displayed, including Lua, keycode, and user-remapped alternatives.

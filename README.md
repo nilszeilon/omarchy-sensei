@@ -4,7 +4,7 @@ Turn mouse habits into keyboard practice.
 
 Sensei has one loop:
 
-1. Use any Omarchy menu action that has a confidently matching shortcut.
+1. Click a workspace, a keyboard-accessible bar panel, or an Omarchy menu action with a confidently matching shortcut.
 2. Sensei opens a task containing every matching shortcut shown by Omarchy's Super+K panel.
 3. Perform that action once with the shortcut.
 4. The task closes.
@@ -19,9 +19,9 @@ cd ~/.config/omarchy/plugins/io.github.nilszeilon.omarchy-sensei
 ./install.sh
 ```
 
-The installer builds the local collector, derives a coaching catalog from Omarchy's live menu and Super+K bindings, and connects every confident match. There is no hardcoded action list, and it never edits `/usr/share/omarchy`.
+The installer builds the local collector, derives a coaching catalog from Omarchy's live menu and Super+K bindings, and connects every confident match. Sensei also observes Omarchy Shell's semantic bar-button registry: workspace clicks retain their workspace number, built-in panels use their direct shortcut, and custom panels use the live `Bar panel N` shortcut. There is no hardcoded panel or action list, and it never edits `/usr/share/omarchy`.
 
-Task hints resolve against the active Hyprland bindings when the task is opened, so user remaps take precedence over Omarchy defaults.
+Task hints resolve against the active Hyprland bindings, so user remaps take precedence over Omarchy defaults. Clicks without a keyboard equivalent are ignored.
 
 The catalog refreshes automatically after menu or personal binding changes and after Omarchy updates. Inspect its decisions with:
 
