@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "id": "io.github.nilszeilon.omarchy-sensei",
+  "name": "Omarchy Sensei",
+  "version": "0.1.0",
+  "author": "Nils Zeilon",
+  "license": "MIT",
+  "description": "A privacy-first coach for building keyboard-first Omarchy habits.",
+  "kinds": ["bar-widget"],
+  "entryPoints": {
+    "barWidget": "BarWidget.qml"
+  },
+  "barWidget": {
+    "displayName": "Omarchy Sensei",
+    "description": "Shortcut coaching, progress, and time-saved insights.",
+    "category": "Productivity",
+    "aliases": ["sensei", "shortcut-coach", "keyboard-coach"],
+    "allowMultiple": false,
+    "defaultSection": "right"
+  }
+}
