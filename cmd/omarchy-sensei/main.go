@@ -317,6 +317,9 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		result.Tasks = append(result.Tasks, *task)
 	}
 	sort.Slice(result.Tasks, func(i, j int) bool {
+		if result.Tasks[i].SlowUses != result.Tasks[j].SlowUses {
+			return result.Tasks[i].SlowUses > result.Tasks[j].SlowUses
+		}
 		return result.Tasks[i].OpenedAt.Before(result.Tasks[j].OpenedAt)
 	})
 	return result

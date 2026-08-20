@@ -35,6 +35,17 @@ Panel {
     var delta = dy !== 0 ? dy : dx
     root.selectedIndex = Math.max(0, Math.min(stats.tasks.length - 1, root.selectedIndex + delta))
   }
+  function ensureSelectedVisible() {
+    if (!taskScroll.visible) return
+    var card = taskRepeater.itemAt(root.selectedIndex)
+    if (!card) return
+    if (card.y < taskScroll.contentY) {
+      taskScroll.contentY = card.y
+    } else if (card.y + card.height > taskScroll.contentY + taskScroll.height) {
+      taskScroll.contentY = card.y + card.height - taskScroll.height
+    }
+  }
+  onSelectedIndexChanged: Qt.callLater(root.ensureSelectedVisible)
   function alpha(color, opacity) { return Qt.rgba(color.r, color.g, color.b, opacity) }
 
   SenseiModel { id: stats }
@@ -95,93 +106,105 @@ Panel {
           }
         }
 
-        Column {
+        Flickable {
+          id: taskScroll
           width: parent.width
-          spacing: Style.space(8)
+          height: Math.min(taskList.implicitHeight, Style.space(360))
+          contentWidth: width
+          contentHeight: taskList.implicitHeight
+          boundsBehavior: Flickable.StopAtBounds
+          clip: true
           visible: stats.tasks.length > 0
 
-          Repeater {
-            model: stats.tasks
+          Column {
+            id: taskList
+            width: taskScroll.width
+            spacing: Style.space(8)
 
-            Rectangle {
-              id: taskCard
-              required property int index
-              required property var modelData
-              readonly property bool selected: root.cursorActive && root.selectedIndex === index
-              width: parent.width
-              implicitHeight: taskContent.implicitHeight + Style.space(24)
-              radius: Style.cornerRadius
-              color: selected ? root.alpha(root.accent, 0.12) : root.alpha(root.foreground, 0.055)
-              border.width: selected ? 1 : 0
-              border.color: root.alpha(root.accent, 0.75)
+            Repeater {
+              id: taskRepeater
+              model: stats.tasks
 
-              Column {
-                id: taskContent
-                anchors.left: parent.left
-                anchors.right: parent.right
-                anchors.top: parent.top
-                anchors.margins: Style.space(12)
-                spacing: Style.space(7)
+              Rectangle {
+                id: taskCard
+                required property int index
+                required property var modelData
+                readonly property bool selected: root.cursorActive && root.selectedIndex === index
+                width: taskList.width
+                implicitHeight: taskContent.implicitHeight + Style.space(24)
+                radius: Style.cornerRadius
+                color: selected ? root.alpha(root.accent, 0.12) : root.alpha(root.foreground, 0.055)
+                border.width: selected ? 1 : 0
+                border.color: root.alpha(root.accent, 0.75)
 
-                Row {
-                  width: parent.width
+                Column {
+                  id: taskContent
+                  anchors.left: parent.left
+                  anchors.right: parent.right
+                  anchors.top: parent.top
+                  anchors.margins: Style.space(12)
+                  spacing: Style.space(7)
 
-                  Text {
-                    width: parent.width - slowCount.implicitWidth
-                    text: taskCard.modelData.title
-                    color: root.foreground
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    font.bold: true
-                    elide: Text.ElideRight
+                  Row {
+                    width: parent.width
+
+                    Text {
+                      width: parent.width - slowCount.implicitWidth
+                      text: taskCard.modelData.title
+                      color: root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      font.bold: true
+                      elide: Text.ElideRight
+                    }
+                    Text {
+                      id: slowCount
+                      text: taskCard.modelData.slowUses > 1 ? "×" + taskCard.modelData.slowUses : ""
+                      color: root.foreground
+                      opacity: 0.5
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.caption
+                    }
                   }
+
+                  Rectangle {
+                    width: parent.width
+                    implicitHeight: shortcutText.implicitHeight + Style.space(16)
+                    radius: Style.cornerRadius
+                    color: root.alpha(root.accent, 0.15)
+
+                    Text {
+                      id: shortcutText
+                      anchors.centerIn: parent
+                      width: parent.width - Style.space(16)
+                      text: taskCard.modelData.shortcut
+                      color: root.accent
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      font.bold: true
+                      horizontalAlignment: Text.AlignHCenter
+                      wrapMode: Text.Wrap
+                    }
+                  }
+
                   Text {
-                    id: slowCount
-                    text: taskCard.modelData.slowUses > 1 ? "×" + taskCard.modelData.slowUses : ""
+                    width: parent.width
+                    text: "Do it once with the keyboard to close this task."
                     color: root.foreground
-                    opacity: 0.5
+                    opacity: 0.65
                     font.family: root.fontFamily
                     font.pixelSize: Style.font.caption
+                    wrapMode: Text.WordWrap
                   }
                 }
 
-                Rectangle {
-                  width: parent.width
-                  implicitHeight: shortcutText.implicitHeight + Style.space(16)
-                  radius: Style.cornerRadius
-                  color: root.alpha(root.accent, 0.15)
-
-                  Text {
-                    id: shortcutText
-                    anchors.centerIn: parent
-                    width: parent.width - Style.space(16)
-                    text: taskCard.modelData.shortcut
-                    color: root.accent
-                    font.family: root.fontFamily
-                    font.pixelSize: Style.font.body
-                    font.bold: true
-                    horizontalAlignment: Text.AlignHCenter
-                    wrapMode: Text.Wrap
+                MouseArea {
+                  anchors.fill: parent
+                  hoverEnabled: true
+                  onPositionChanged: {
+                    root.selectedIndex = taskCard.index
+                    root.cursorActive = true
                   }
-                }
-
-                Text {
-                  width: parent.width
-                  text: "Do it once with the keyboard to close this task."
-                  color: root.foreground
-                  opacity: 0.65
-                  font.family: root.fontFamily
-                  font.pixelSize: Style.font.caption
-                  wrapMode: Text.WordWrap
-                }
-              }
-
-              MouseArea {
-                anchors.fill: parent
-                hoverEnabled: true
-                onPositionChanged: {
-                  root.selectedIndex = taskCard.index
-                  root.cursorActive = true
                 }
               }
             }

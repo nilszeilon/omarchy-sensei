@@ -23,7 +23,7 @@ The installer builds the local collector and connects recognized Omarchy shortcu
 
 ## Controls
 
-Use arrows or `h/j/k/l` to move through tasks, `Tab`/`Shift+Tab` to switch bar panels, and `Esc` to close.
+Tasks are ordered by their slow-use count, so the worst offender is always first. Use arrows or `h/j/k/l` to move through the scrollable list, `Tab`/`Shift+Tab` to switch bar panels, and `Esc` to close.
 
 ```sh
 omarchy-sensei status
