@@ -83,7 +83,7 @@ Panel {
 
           Row {
             id: heatmap
-            width: parent.width
+            width: parent.width - Style.space(16)
             readonly property real cellGap: 2
             readonly property real cellSize: Math.max(3, Math.floor((width - (52 * cellGap)) / 53))
             spacing: cellGap
