@@ -113,3 +113,25 @@ func TestPausePreventsRecording(t *testing.T) {
 		t.Fatalf("paused recorder wrote an event")
 	}
 }
+
+func TestInstallBindingCacheIncludesEveryBindingOnce(t *testing.T) {
+	dir := t.TempDir()
+	paths := Paths{BindingCache: filepath.Join(dir, "bindings.json")}
+	catalog := Catalog{
+		Matches: []CatalogMatch{
+			{Binding: Binding{Description: "Bluetooth", Shortcuts: []string{"SUPER CTRL + B"}}},
+			{Binding: Binding{Description: "Bluetooth", Shortcuts: []string{"SUPER CTRL + B"}}},
+		},
+		UnmatchedBindings: []Binding{{Description: "Bar panel 2", Shortcuts: []string{"SUPER CTRL + 2"}}},
+	}
+	if err := installBindingCache(paths, catalog); err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := loadBindingCache(paths.BindingCache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bindings) != 2 || bindings[0].Description != "Bluetooth" || bindings[1].Description != "Bar panel 2" {
+		t.Fatalf("expected deduplicated matched and unmatched bindings, got %#v", bindings)
+	}
+}
