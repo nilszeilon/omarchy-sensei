@@ -63,6 +63,7 @@ Panel {
   function open() {
     root.controller.show()
     stats.refresh()
+    Qt.callLater(function() { root.selectDay(root.todayIndex()) })
   }
   function close() { root.controller.hide() }
   function switchPanel(direction) {
@@ -152,18 +153,20 @@ Panel {
                     width: heatmap.cellSize
                     height: heatmap.cellSize
                     radius: 1.5
-                    color: day && day.count > 0
-                      ? root.alpha(root.accent, root.intensity(Number(day.count)))
+                    color: day && Number(day.count) > 0
+                      ? root.accent
                       : root.alpha(root.foreground, 0.1)
                     border.width: hasCursor ? 2 : day && day.today ? 1 : 0
-                    border.color: hasCursor ? root.accent : root.foreground
+                    border.color: root.foreground
 
-                    ToolTip.visible: hover.hovered && day !== null && String(day.date || "") !== ""
+                    ToolTip.visible: hover.containsMouse && day !== null && String(day.date || "") !== ""
                     ToolTip.text: day && day.date ? day.date + " · " + day.count + " keyboard actions" : ""
 
-                    HoverHandler {
+                    MouseArea {
                       id: hover
-                      onHoveredChanged: if (hovered) root.selectDay(parent.dayIndex)
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      onPositionChanged: root.selectDay(parent.dayIndex)
                     }
                   }
                 }
