@@ -155,7 +155,7 @@ Panel {
                   ? "Resume with omarchy-sensei resume."
                 : stats.hint
                   ? stats.hint.title + " was done the slow way " + stats.hint.slowUses
-                    + (stats.hint.slowUses === 1 ? " time. Use " : " times. Use ")
+                    + (Number(stats.hint.slowUses) === 1 ? " time. Use " : " times. Use ")
                     + stats.hint.shortcut + "."
                   : "No unlearned shortcut yet."
               color: root.foreground
