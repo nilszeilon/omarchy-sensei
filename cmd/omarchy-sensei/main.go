@@ -39,7 +39,7 @@ type Snapshot struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal("usage: omarchy-sensei <setup|uninstall|record|run|snapshot|pause|resume|clear|status>")
+		fatal("usage: omarchy-sensei <setup|refresh|catalog|doctor|uninstall|record|run|snapshot|pause|resume|clear|status>")
 	}
 
 	paths, err := senseiPaths()
@@ -53,6 +53,16 @@ func main() {
 			fatal(err.Error())
 		}
 		fmt.Println("Omarchy Sensei observation is installed. Run `hyprctl reload` to activate it.")
+	case "refresh":
+		catalog, err := refreshIntegration(paths)
+		if err != nil {
+			fatal(err.Error())
+		}
+		fmt.Printf("Sensei catalog refreshed: %d coached menu actions, %d unmatched.\n", len(catalog.Matches), len(catalog.UnmatchedMenu))
+	case "catalog":
+		printCatalog(paths, os.Args[2:])
+	case "doctor":
+		doctor(paths)
 	case "uninstall":
 		if err := uninstallIntegration(paths); err != nil {
 			fatal(err.Error())
@@ -81,6 +91,34 @@ func main() {
 	default:
 		fatal("unknown command: " + os.Args[1])
 	}
+}
+
+func doctor(paths Paths) {
+	catalog, err := loadCatalog(paths)
+	if err != nil {
+		fatal("catalog: " + err.Error())
+	}
+	if len(catalog.Matches) == 0 {
+		fatal("catalog has no coached actions")
+	}
+	if !integrationInstalled(paths) {
+		fatal("Hyprland integration is not installed")
+	}
+	menu, err := os.ReadFile(paths.MenuExtension)
+	if err != nil || !strings.Contains(string(menu), menuStart) {
+		fatal("generated menu integration is not installed")
+	}
+	observer, err := os.ReadFile(paths.SenseiLua)
+	if err != nil || !strings.Contains(string(observer), "hl.dispatch(dispatcher)") {
+		fatal("generic shortcut observer is not installed")
+	}
+	if output, err := exec.Command("systemctl", "--user", "is-active", "omarchy-sensei-refresh.path").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "active" {
+		fatal("catalog refresh watcher is not active")
+	}
+	if output, err := exec.Command("hyprctl", "configerrors").Output(); err != nil || strings.TrimSpace(string(output)) != "" {
+		fatal("Hyprland reports configuration errors")
+	}
+	fmt.Printf("Sensei is healthy: %d coached menu actions, %d unmatched menu actions, refresh watcher active.\n", len(catalog.Matches), len(catalog.UnmatchedMenu))
 }
 
 func record(paths Paths, args []string) {
@@ -182,7 +220,11 @@ type Paths struct {
 	HyprlandConfig string
 	SenseiLua      string
 	MenuExtension  string
+	DefaultMenu    string
 	LocalBinary    string
+	RefreshService string
+	RefreshPath    string
+	PostUpdateHook string
 }
 
 func senseiPaths() (Paths, error) {
@@ -203,8 +245,46 @@ func senseiPaths() (Paths, error) {
 		HyprlandConfig: filepath.Join(home, ".config", "hypr", "hyprland.lua"),
 		SenseiLua:      filepath.Join(home, ".config", "hypr", "sensei.lua"),
 		MenuExtension:  filepath.Join(home, ".config", "omarchy", "extensions", "omarchy-menu.jsonc"),
+		DefaultMenu:    filepath.Join("/usr/share/omarchy", "default", "omarchy", "omarchy-menu.jsonc"),
 		LocalBinary:    filepath.Join(home, ".local", "bin", "omarchy-sensei"),
+		RefreshService: filepath.Join(home, ".config", "systemd", "user", "omarchy-sensei-refresh.service"),
+		RefreshPath:    filepath.Join(home, ".config", "systemd", "user", "omarchy-sensei-refresh.path"),
+		PostUpdateHook: filepath.Join(home, ".config", "omarchy", "hooks", "post-update.d", "omarchy-sensei"),
 	}, nil
+}
+
+func printCatalog(paths Paths, args []string) {
+	flags := flag.NewFlagSet("catalog", flag.ExitOnError)
+	unmatched := flags.Bool("unmatched", false, "show only unmatched menu actions and bindings")
+	jsonOutput := flags.Bool("json", false, "print machine-readable JSON")
+	_ = flags.Parse(args)
+	catalog, err := loadCatalog(paths)
+	if err != nil {
+		fatal(err.Error())
+	}
+	if *jsonOutput {
+		if err := json.NewEncoder(os.Stdout).Encode(catalog); err != nil {
+			fatal(err.Error())
+		}
+		return
+	}
+	if !*unmatched {
+		for _, match := range catalog.Matches {
+			fmt.Printf("✓ %-38s → %-32s %s\n", match.Menu.ID, match.Binding.Description, strings.Join(match.Binding.Shortcuts, " / "))
+		}
+	}
+	for _, item := range catalog.UnmatchedMenu {
+		fmt.Printf("· %-38s (no shortcut match for %q)\n", item.ID, item.Label)
+	}
+	if *unmatched {
+		for _, binding := range catalog.UnmatchedBindings {
+			fmt.Printf("⌨ %-38s (no matching menu action; %s)\n", binding.Description, strings.Join(binding.Shortcuts, " / "))
+		}
+	}
+	if !*unmatched {
+		fmt.Printf("\n%d coached menu actions; %d unmatched menu actions; %d shortcut-only actions.\n",
+			len(catalog.Matches), len(catalog.UnmatchedMenu), len(catalog.UnmatchedBindings))
+	}
 }
 
 func recordEvent(paths Paths, event Event) error {
@@ -301,6 +381,7 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 
 	open := map[string]*Task{}
 	knownShortcuts := map[string][]string{}
+	lastShortcutAt := map[string]time.Time{}
 	for _, event := range ordered {
 		if event.Trigger == "shortcut" && event.Shortcut != "" {
 			knownShortcuts[event.Action] = mergeShortcuts(knownShortcuts[event.Action], event.Shortcut)
@@ -312,6 +393,14 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		}
 		switch event.Trigger {
 		case "menu", "mouse":
+			// Some shortcuts intentionally route through an instrumented Omarchy
+			// menu action. That menu event is the shortcut's consequence, not a
+			// second slow use, so do not reopen the task it just completed.
+			if event.Trigger == "menu" && !lastShortcutAt[event.Action].IsZero() &&
+				event.OccurredAt.Sub(lastShortcutAt[event.Action]) >= 0 &&
+				event.OccurredAt.Sub(lastShortcutAt[event.Action]) < time.Second {
+				continue
+			}
 			shortcuts := eventShortcuts(event)
 			if len(shortcuts) == 0 {
 				continue
@@ -326,6 +415,7 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 			task.Shortcut = task.Shortcuts[0]
 			task.SlowUses++
 		case "shortcut":
+			lastShortcutAt[event.Action] = event.OccurredAt
 			delete(open, event.Action)
 		}
 	}
@@ -374,17 +464,21 @@ func mergeShortcuts(existing []string, additions ...string) []string {
 	result := append([]string(nil), existing...)
 	seen := make(map[string]bool, len(result))
 	for _, shortcut := range result {
-		seen[strings.ToUpper(strings.TrimSpace(shortcut))] = true
+		seen[canonicalShortcut(shortcut)] = true
 	}
 	for _, shortcut := range additions {
 		shortcut = strings.TrimSpace(shortcut)
-		key := strings.ToUpper(shortcut)
+		key := canonicalShortcut(shortcut)
 		if shortcut != "" && !seen[key] {
 			result = append(result, shortcut)
 			seen[key] = true
 		}
 	}
 	return result
+}
+
+func canonicalShortcut(shortcut string) string {
+	return strings.Join(strings.Fields(strings.ReplaceAll(strings.ToUpper(shortcut), "+", " ")), " ")
 }
 
 func fatal(message string) {
