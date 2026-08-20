@@ -26,6 +26,8 @@ Sensei automatically observes activated Omarchy keyboard bindings and a curated 
 
 The panel is keyboard navigable: use the arrow keys or `h/j/k/l` to inspect days, `Tab`/`Shift+Tab` to switch bar panels, and `Esc` to close.
 
+The personalized Sensei Path reveals only observed skills. Nodes progress from Discovered to Learned after one shortcut use and Mastered after five uses. Branch Trials celebrate meaningful clusters of mastered Omarchy skills without generating notifications or nagging the user.
+
 ## Install
 
 ```sh

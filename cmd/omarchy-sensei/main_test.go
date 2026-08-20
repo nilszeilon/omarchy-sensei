@@ -104,3 +104,29 @@ func TestBuildSnapshotHidesLearnedAction(t *testing.T) {
 		t.Fatalf("expected action to be hidden after its first shortcut use, got %#v", hint)
 	}
 }
+
+func TestBuildSnapshotBuildsPersonalSkillPath(t *testing.T) {
+	now := time.Date(2026, 8, 20, 12, 0, 0, 0, time.Local)
+	var events []Event
+	for i := 0; i < 6; i++ {
+		events = append(events, Event{OccurredAt: now, Action: "focus-on-left-window", Title: "Focus left", Trigger: "shortcut", Shortcut: "SUPER+LEFT"})
+	}
+	events = append(events,
+		Event{OccurredAt: now, Action: "swap-window-right", Title: "Swap right", Trigger: "shortcut", Shortcut: "SUPER+SHIFT+RIGHT"},
+		Event{OccurredAt: now, Action: "screenshot", Title: "Screenshot", Trigger: "menu", Shortcut: "PRINT"},
+	)
+
+	result := buildSnapshot(events, now)
+	if result.Level != 1 || result.XP != 7 {
+		t.Fatalf("expected level 1 with 7 XP, got level %d with %d XP", result.Level, result.XP)
+	}
+	if len(result.Branches) < 2 || result.Branches[0].Name != "Window Arts" {
+		t.Fatalf("expected personalized window branch first, got %#v", result.Branches)
+	}
+	if result.Branches[0].Skills[0].State != "mastered" {
+		t.Fatalf("expected most-used window skill mastered, got %#v", result.Branches[0].Skills[0])
+	}
+	if result.Trial == nil || result.Trial.Title != "The Window Tamer" {
+		t.Fatalf("expected window trial, got %#v", result.Trial)
+	}
+}

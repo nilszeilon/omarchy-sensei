@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.nilszeilon.omarchy-sensei",
   "name": "Omarchy Sensei",
-  "version": "0.4.1",
+  "version": "0.5.0",
   "author": "Nils Zeilon",
   "license": "MIT",
   "description": "A privacy-first coach for building keyboard-first Omarchy habits.",

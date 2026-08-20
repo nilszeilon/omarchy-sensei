@@ -2,7 +2,7 @@
 
 Omarchy Sensei is planned as two cooperating pieces:
 
-1. A Quickshell bar widget and panel containing aligned seven-day mouse/menu and shortcut graphs plus one lesson.
+1. A Quickshell bar widget and panel containing a personalized skill path, one tailored Trial, aligned seven-day mouse/menu and shortcut graphs, and one lesson.
 2. A small local companion CLI for normalizing semantic events, matching actions to shortcuts, and persisting local history.
 
 ## Automatic observation

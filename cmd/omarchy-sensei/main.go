@@ -37,12 +37,37 @@ type Hint struct {
 	Avoided  int    `json:"avoided"`
 }
 
+type Skill struct {
+	Action   string `json:"action"`
+	Title    string `json:"title"`
+	Shortcut string `json:"shortcut"`
+	State    string `json:"state"`
+	Uses     int    `json:"uses"`
+}
+
+type Branch struct {
+	Name     string  `json:"name"`
+	Glyph    string  `json:"glyph"`
+	Skills   []Skill `json:"skills"`
+	Mastered int     `json:"mastered"`
+}
+
+type Trial struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Defeated    bool   `json:"defeated"`
+}
+
 type Snapshot struct {
-	MouseDays    []Day `json:"mouseDays"`
-	ShortcutDays []Day `json:"shortcutDays"`
-	MaxCount     int   `json:"maxCount"`
-	Hint         *Hint `json:"hint"`
-	Paused       bool  `json:"paused"`
+	MouseDays    []Day    `json:"mouseDays"`
+	ShortcutDays []Day    `json:"shortcutDays"`
+	MaxCount     int      `json:"maxCount"`
+	Hint         *Hint    `json:"hint"`
+	Branches     []Branch `json:"branches"`
+	Trial        *Trial   `json:"trial"`
+	XP           int      `json:"xp"`
+	Level        int      `json:"level"`
+	Paused       bool     `json:"paused"`
 }
 
 func main() {
@@ -363,7 +388,98 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 	if len(candidates) > 0 {
 		result.Hint = &candidates[0]
 	}
+
+	branchSkills := map[string][]Skill{}
+	for _, entry := range scores {
+		hint := entry.hint
+		if hint.Title == "" || hint.Shortcut == "" || (hint.FastUses == 0 && hint.SlowUses == 0) {
+			continue
+		}
+		state := "discovered"
+		if hint.FastUses >= 5 {
+			state = "mastered"
+		} else if hint.FastUses > 0 {
+			state = "learned"
+		}
+		result.XP += hint.FastUses
+		name, _ := skillBranch(hint.Action)
+		branchSkills[name] = append(branchSkills[name], Skill{
+			Action: hint.Action, Title: hint.Title, Shortcut: hint.Shortcut,
+			State: state, Uses: hint.FastUses,
+		})
+	}
+	result.Level = 1 + result.XP/25
+	branchOrder := []string{"Window Arts", "Workspace Way", "Swift Launching", "Capture Craft", "System Lore"}
+	for _, name := range branchOrder {
+		skills := branchSkills[name]
+		if len(skills) == 0 {
+			continue
+		}
+		sort.Slice(skills, func(i, j int) bool {
+			if skills[i].Uses == skills[j].Uses {
+				return skills[i].Title < skills[j].Title
+			}
+			return skills[i].Uses > skills[j].Uses
+		})
+		if len(skills) > 4 {
+			skills = skills[:4]
+		}
+		_, glyph := skillBranch(skills[0].Action)
+		branch := Branch{Name: name, Glyph: glyph, Skills: skills}
+		for _, skill := range skills {
+			if skill.State == "mastered" {
+				branch.Mastered++
+			}
+		}
+		result.Branches = append(result.Branches, branch)
+		if len(result.Branches) == 3 {
+			break
+		}
+	}
+	if len(result.Branches) > 0 {
+		branch := result.Branches[0]
+		goal := len(branch.Skills)
+		if goal > 3 {
+			goal = 3
+		}
+		defeated := branch.Mastered >= goal
+		description := fmt.Sprintf("Master %d %s skills", goal, branch.Name)
+		if defeated {
+			description = fmt.Sprintf("%d skills mastered", branch.Mastered)
+		}
+		result.Trial = &Trial{Title: branchTrial(branch.Name), Description: description, Defeated: defeated}
+	}
 	return result
+}
+
+func skillBranch(action string) (string, string) {
+	switch {
+	case strings.Contains(action, "workspace"):
+		return "Workspace Way", "◇"
+	case strings.Contains(action, "window") || strings.Contains(action, "focus") || strings.Contains(action, "swap"):
+		return "Window Arts", "◆"
+	case strings.Contains(action, "screenshot") || strings.Contains(action, "capture") || strings.Contains(action, "record") || strings.Contains(action, "color"):
+		return "Capture Craft", "◈"
+	case strings.Contains(action, "terminal") || strings.Contains(action, "browser") || strings.Contains(action, "launch"):
+		return "Swift Launching", "▲"
+	default:
+		return "System Lore", "✦"
+	}
+}
+
+func branchTrial(branch string) string {
+	switch branch {
+	case "Window Arts":
+		return "The Window Tamer"
+	case "Workspace Way":
+		return "The Workspace Wanderer"
+	case "Swift Launching":
+		return "The Zero-Mouse Start"
+	case "Capture Craft":
+		return "The Capture Master"
+	default:
+		return "The Omarchy Initiate"
+	}
 }
 
 func dayStart(value time.Time) time.Time {

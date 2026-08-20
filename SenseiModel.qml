@@ -9,6 +9,10 @@ Item {
   property var shortcutDays: []
   property int maxCount: 0
   property var hint: null
+  property var branches: []
+  property var trial: null
+  property int xp: 0
+  property int level: 1
   property bool paused: false
   property string error: ""
 
@@ -23,6 +27,10 @@ Item {
       shortcutDays = parsed.shortcutDays || []
       maxCount = Number(parsed.maxCount || 0)
       hint = parsed.hint || null
+      branches = parsed.branches || []
+      trial = parsed.trial || null
+      xp = Number(parsed.xp || 0)
+      level = Number(parsed.level || 1)
       paused = parsed.paused === true
       error = ""
     } catch (e) {

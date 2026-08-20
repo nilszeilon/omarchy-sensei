@@ -18,6 +18,9 @@ Panel {
   readonly property string fontFamily: bar ? bar.fontFamily : Style.font.family
   property bool cursorActive: false
   property int selectedDayIndex: -1
+  property string focusArea: "path"
+  property int selectedBranchIndex: 0
+  property int selectedSkillIndex: 0
 
   function todayIndex() {
     for (var i = 0; i < stats.shortcutDays.length; i++) {
@@ -33,13 +36,32 @@ Panel {
     cursorActive = true
   }
   function moveCursor(dx, dy) {
-    if (!cursorActive || selectedDayIndex < 0) {
-      selectDay(todayIndex())
+    cursorActive = true
+    if (focusArea === "path") {
+      if (stats.branches.length === 0) return
+      if (dx !== 0) {
+        var skills = stats.branches[selectedBranchIndex].skills || []
+        selectedSkillIndex = Math.max(0, Math.min(skills.length - 1, selectedSkillIndex + dx))
+      } else if (dy !== 0) {
+        var nextBranch = selectedBranchIndex + dy
+        if (nextBranch >= stats.branches.length) {
+          focusArea = "charts"
+          selectDay(todayIndex())
+        } else {
+          selectedBranchIndex = Math.max(0, nextBranch)
+          var nextSkills = stats.branches[selectedBranchIndex].skills || []
+          selectedSkillIndex = Math.min(selectedSkillIndex, Math.max(0, nextSkills.length - 1))
+        }
+      }
       return
     }
-
-    var delta = dx !== 0 ? dx : dy
-    selectDay(Math.max(0, Math.min(6, selectedDayIndex + delta)))
+    if (dy < 0) {
+      focusArea = "path"
+      selectedBranchIndex = Math.max(0, stats.branches.length - 1)
+      selectedSkillIndex = 0
+      return
+    }
+    if (dx !== 0) selectDay(Math.max(0, Math.min(6, selectedDayIndex + dx)))
   }
   function selectedDay() {
     return selectedDayIndex >= 0 && selectedDayIndex < stats.shortcutDays.length
@@ -57,6 +79,10 @@ Panel {
   function open() {
     root.controller.show()
     stats.refresh()
+    root.focusArea = "path"
+    root.cursorActive = true
+    root.selectedBranchIndex = 0
+    root.selectedSkillIndex = 0
     Qt.callLater(function() { root.selectDay(root.todayIndex()) })
   }
   function close() { root.controller.hide() }
@@ -68,7 +94,7 @@ Panel {
   function alpha(color, opacity) { return Qt.rgba(color.r, color.g, color.b, opacity) }
   function barHeight(count) {
     if (stats.maxCount <= 0) return 0
-    return Math.max(count > 0 ? 3 : 0, Math.round(Style.space(48) * Number(count) / stats.maxCount))
+    return Math.max(count > 0 ? 3 : 0, Math.round(Style.space(30) * Number(count) / stats.maxCount))
   }
 
   SenseiModel { id: stats }
@@ -104,6 +130,213 @@ Panel {
           font.bold: true
         }
 
+        Rectangle {
+          width: parent.width
+          implicitHeight: heroContent.implicitHeight + Style.space(24)
+          radius: Style.cornerRadius
+          color: root.alpha(root.accent, 0.10)
+          border.width: 1
+          border.color: root.alpha(root.accent, 0.35)
+
+          Column {
+            id: heroContent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: Style.space(12)
+            spacing: Style.space(7)
+
+            Row {
+              width: parent.width
+
+              Text {
+                text: "SENSEI PATH"
+                color: root.accent
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                font.bold: true
+                font.letterSpacing: 1.2
+              }
+
+              Item { width: Math.max(0, parent.width - parent.children[0].implicitWidth - levelText.implicitWidth); height: 1 }
+
+              Text {
+                id: levelText
+                text: "LEVEL " + stats.level
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.body
+                font.bold: true
+              }
+            }
+
+            Rectangle {
+              width: parent.width
+              height: Style.space(5)
+              radius: height / 2
+              color: root.alpha(root.foreground, 0.10)
+
+              Rectangle {
+                width: parent.width * ((stats.xp % 25) / 25)
+                height: parent.height
+                radius: parent.radius
+                color: root.accent
+              }
+            }
+
+            Text {
+              text: stats.xp + " keyboard XP · " + (25 - (stats.xp % 25)) + " to next level"
+              color: root.foreground
+              opacity: 0.72
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+        }
+
+        Column {
+          id: skillPath
+          width: parent.width
+          spacing: Style.space(7)
+
+          Repeater {
+            model: stats.branches
+
+            Rectangle {
+              id: branchRow
+              required property int index
+              required property var modelData
+              width: skillPath.width
+              height: Style.space(44)
+              radius: Style.cornerRadius
+              color: root.alpha(root.foreground, 0.045)
+
+              Text {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(10)
+                anchors.verticalCenter: parent.verticalCenter
+                width: Style.space(88)
+                text: branchRow.modelData.glyph + "  " + branchRow.modelData.name
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                wrapMode: Text.WordWrap
+              }
+
+              Rectangle {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(102)
+                anchors.right: parent.right
+                anchors.rightMargin: Style.space(14)
+                anchors.verticalCenter: parent.verticalCenter
+                height: 1
+                color: root.alpha(root.foreground, 0.18)
+              }
+
+              Row {
+                anchors.left: parent.left
+                anchors.leftMargin: Style.space(94)
+                anchors.right: parent.right
+                anchors.verticalCenter: parent.verticalCenter
+                spacing: Style.space(10)
+
+                Repeater {
+                  model: branchRow.modelData.skills || []
+
+                  Rectangle {
+                    id: skillNode
+                    required property int index
+                    required property var modelData
+                    readonly property bool selected: root.cursorActive && root.focusArea === "path"
+                      && root.selectedBranchIndex === branchRow.index && root.selectedSkillIndex === index
+                    width: Style.space(34)
+                    height: width
+                    radius: width / 2
+                    color: modelData.state === "mastered"
+                      ? root.accent
+                      : modelData.state === "learned"
+                        ? root.alpha(root.accent, 0.38)
+                        : root.alpha(root.foreground, 0.08)
+                    border.width: selected ? 2 : 1
+                    border.color: selected ? root.foreground : root.alpha(root.foreground, 0.25)
+
+                    Text {
+                      anchors.centerIn: parent
+                      text: parent.modelData.state === "mastered" ? "✦" : parent.modelData.state === "learned" ? "●" : "?"
+                      color: parent.modelData.state === "mastered" ? Color.background : root.foreground
+                      font.family: root.fontFamily
+                      font.pixelSize: Style.font.body
+                      font.bold: true
+                    }
+
+                    ToolTip.visible: nodeHover.containsMouse || skillNode.selected
+                    ToolTip.text: modelData.title + " · " + modelData.shortcut + " · " + modelData.state
+
+                    MouseArea {
+                      id: nodeHover
+                      anchors.fill: parent
+                      hoverEnabled: true
+                      onPositionChanged: {
+                        root.focusArea = "path"
+                        root.selectedBranchIndex = branchRow.index
+                        root.selectedSkillIndex = parent.index
+                        root.cursorActive = true
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        Rectangle {
+          visible: stats.trial !== null
+          width: parent.width
+          implicitHeight: trialContent.implicitHeight + Style.space(20)
+          radius: Style.cornerRadius
+          color: stats.trial && stats.trial.defeated
+            ? root.alpha(root.accent, 0.13)
+            : root.alpha(root.foreground, 0.07)
+          border.width: 1
+          border.color: stats.trial && stats.trial.defeated
+            ? root.alpha(root.accent, 0.55)
+            : root.alpha(root.foreground, 0.16)
+
+          Column {
+            id: trialContent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: Style.space(10)
+            spacing: Style.space(3)
+
+            Text {
+              text: stats.trial && stats.trial.defeated ? "TRIAL DEFEATED" : "CURRENT TRIAL"
+              color: stats.trial && stats.trial.defeated ? root.accent : root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+              font.bold: true
+              font.letterSpacing: 1
+            }
+            Text {
+              text: stats.trial ? stats.trial.title : ""
+              color: root.foreground
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.body
+              font.bold: true
+            }
+            Text {
+              text: stats.trial ? stats.trial.description : ""
+              color: root.foreground
+              opacity: 0.72
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+        }
+
         Column {
           width: parent.width
           spacing: Style.space(10)
@@ -119,7 +352,7 @@ Panel {
           Row {
             id: mouseChart
             width: parent.width
-            height: Style.space(62)
+            height: Style.space(44)
             spacing: Style.space(4)
 
             Repeater {
@@ -161,7 +394,10 @@ Panel {
                 MouseArea {
                   anchors.fill: parent
                   hoverEnabled: true
-                  onPositionChanged: root.selectDay(parent.index)
+                  onPositionChanged: {
+                    root.focusArea = "charts"
+                    root.selectDay(parent.index)
+                  }
                 }
               }
             }
@@ -178,7 +414,7 @@ Panel {
           Row {
             id: shortcutChart
             width: parent.width
-            height: Style.space(62)
+            height: Style.space(44)
             spacing: Style.space(4)
 
             Repeater {
@@ -220,7 +456,10 @@ Panel {
                 MouseArea {
                   anchors.fill: parent
                   hoverEnabled: true
-                  onPositionChanged: root.selectDay(parent.index)
+                  onPositionChanged: {
+                    root.focusArea = "charts"
+                    root.selectDay(parent.index)
+                  }
                 }
               }
             }
