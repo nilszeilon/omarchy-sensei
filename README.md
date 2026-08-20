@@ -5,7 +5,7 @@ Turn mouse habits into keyboard practice.
 Sensei has one loop:
 
 1. Use a recognized Omarchy action through the mouse or menu.
-2. Sensei opens a task containing the matching shortcut.
+2. Sensei opens a task containing every matching shortcut shown by Omarchy's Super+K panel.
 3. Perform that action once with the shortcut.
 4. The task closes.
 
@@ -20,6 +20,8 @@ cd ~/.config/omarchy/plugins/io.github.nilszeilon.omarchy-sensei
 ```
 
 The installer builds the local collector and connects recognized Omarchy shortcuts and matching menu actions. It never edits `/usr/share/omarchy`.
+
+Task hints resolve against the active Hyprland bindings when the task is opened, so user remaps take precedence over Omarchy defaults.
 
 ## Controls
 

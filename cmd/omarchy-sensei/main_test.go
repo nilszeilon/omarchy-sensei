@@ -18,7 +18,7 @@ func TestSlowActionOpensTask(t *testing.T) {
 	if len(result.Tasks) != 1 {
 		t.Fatalf("expected one open task, got %#v", result.Tasks)
 	}
-	if result.Tasks[0].Shortcut != "SUPER + LEFT/RIGHT" {
+	if result.Tasks[0].Shortcut != "SUPER + LEFT/RIGHT" || len(result.Tasks[0].Shortcuts) != 1 {
 		t.Fatalf("expected keyboard hint, got %#v", result.Tasks[0])
 	}
 }
@@ -72,5 +72,30 @@ func TestTasksAreOrderedByWorstOffender(t *testing.T) {
 	tasks := buildSnapshot(events, now).Tasks
 	if len(tasks) != 2 || tasks[0].Action != "terminal" || tasks[0].SlowUses != 3 {
 		t.Fatalf("expected terminal to be the worst offender, got %#v", tasks)
+	}
+}
+
+func TestTaskIncludesAllResolvedShortcuts(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	events := []Event{
+		{OccurredAt: now, Action: "screenshot", Title: "Screenshot", Trigger: "shortcut", Shortcut: "SUPER + P"},
+		{OccurredAt: now.Add(time.Second), Action: "screenshot", Title: "Screenshot", Trigger: "menu", Shortcut: "PRINT", Shortcuts: []string{"PRINT", "SUPER + P"}},
+	}
+
+	tasks := buildSnapshot(events, now).Tasks
+	if len(tasks) != 1 || len(tasks[0].Shortcuts) != 2 || tasks[0].Shortcuts[0] != "PRINT" || tasks[0].Shortcuts[1] != "SUPER + P" {
+		t.Fatalf("expected all active shortcuts without duplicates, got %#v", tasks)
+	}
+}
+
+func TestShortcutsFromOmarchyKeybindings(t *testing.T) {
+	data := []byte("PRINT                               → Screenshot\nSUPER + P                           → Screenshot\nSUPER ALT + P                       → Color picker\n")
+
+	got := shortcutsFromKeybindings(data, "Screenshot", "FALLBACK")
+	if len(got) != 2 || got[0] != "PRINT" || got[1] != "SUPER + P" {
+		t.Fatalf("expected every current binding, got %#v", got)
+	}
+	if got := shortcutsFromKeybindings(data, "Unknown", "SUPER + U"); len(got) != 1 || got[0] != "SUPER + U" {
+		t.Fatalf("expected fallback shortcut, got %#v", got)
 	}
 }

@@ -20,14 +20,16 @@ type Event struct {
 	Title      string    `json:"title"`
 	Trigger    string    `json:"trigger"`
 	Shortcut   string    `json:"shortcut,omitempty"`
+	Shortcuts  []string  `json:"shortcuts,omitempty"`
 }
 
 type Task struct {
-	Action   string    `json:"action"`
-	Title    string    `json:"title"`
-	Shortcut string    `json:"shortcut"`
-	OpenedAt time.Time `json:"openedAt"`
-	SlowUses int       `json:"slowUses"`
+	Action    string    `json:"action"`
+	Title     string    `json:"title"`
+	Shortcut  string    `json:"shortcut"`
+	Shortcuts []string  `json:"shortcuts"`
+	OpenedAt  time.Time `json:"openedAt"`
+	SlowUses  int       `json:"slowUses"`
 }
 
 type Snapshot struct {
@@ -99,6 +101,12 @@ func record(paths Paths, args []string) {
 	if event.Action == "" || event.Title == "" || !validTrigger(event.Trigger) {
 		fatal("record requires --action, --title, and a valid --trigger")
 	}
+	if event.Trigger != "shortcut" {
+		event.Shortcuts = resolveCurrentShortcuts(event.Title, event.Shortcut)
+		if len(event.Shortcuts) > 0 {
+			event.Shortcut = event.Shortcuts[0]
+		}
+	}
 	if event.Trigger != "shortcut" && event.Shortcut == "" {
 		fatal("non-shortcut actions require --shortcut so Sensei can teach them")
 	}
@@ -118,12 +126,14 @@ func run(paths Paths, args []string) {
 	if *action == "" || *title == "" || *shortcut == "" || len(command) != 1 {
 		fatal("run requires --action, --title, --shortcut, and one command after --")
 	}
+	currentShortcuts := resolveCurrentShortcuts(strings.TrimSpace(*title), strings.TrimSpace(*shortcut))
 	if err := recordEvent(paths, Event{
 		OccurredAt: time.Now(),
 		Action:     strings.TrimSpace(*action),
 		Title:      strings.TrimSpace(*title),
 		Trigger:    "menu",
-		Shortcut:   strings.TrimSpace(*shortcut),
+		Shortcut:   currentShortcuts[0],
+		Shortcuts:  currentShortcuts,
 	}); err != nil {
 		fatal(err.Error())
 	}
@@ -290,13 +300,20 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 	})
 
 	open := map[string]*Task{}
+	knownShortcuts := map[string][]string{}
+	for _, event := range ordered {
+		if event.Trigger == "shortcut" && event.Shortcut != "" {
+			knownShortcuts[event.Action] = mergeShortcuts(knownShortcuts[event.Action], event.Shortcut)
+		}
+	}
 	for _, event := range ordered {
 		if event.Action == "" {
 			continue
 		}
 		switch event.Trigger {
 		case "menu", "mouse":
-			if event.Shortcut == "" {
+			shortcuts := eventShortcuts(event)
+			if len(shortcuts) == 0 {
 				continue
 			}
 			task := open[event.Action]
@@ -305,7 +322,8 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 				open[event.Action] = task
 			}
 			task.Title = event.Title
-			task.Shortcut = event.Shortcut
+			task.Shortcuts = mergeShortcuts(shortcuts, knownShortcuts[event.Action]...)
+			task.Shortcut = task.Shortcuts[0]
 			task.SlowUses++
 		case "shortcut":
 			delete(open, event.Action)
@@ -322,6 +340,50 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		}
 		return result.Tasks[i].OpenedAt.Before(result.Tasks[j].OpenedAt)
 	})
+	return result
+}
+
+func resolveCurrentShortcuts(title, fallback string) []string {
+	output, err := exec.Command("omarchy-menu-keybindings", "--print").Output()
+	if err != nil {
+		return mergeShortcuts(nil, fallback)
+	}
+	return shortcutsFromKeybindings(output, title, fallback)
+}
+
+func shortcutsFromKeybindings(data []byte, title, fallback string) []string {
+	var shortcuts []string
+	for _, line := range strings.Split(string(data), "\n") {
+		key, action, found := strings.Cut(line, "→")
+		if !found || !strings.EqualFold(strings.TrimSpace(action), strings.TrimSpace(title)) {
+			continue
+		}
+		shortcuts = mergeShortcuts(shortcuts, strings.TrimSpace(key))
+	}
+	if len(shortcuts) == 0 {
+		shortcuts = mergeShortcuts(shortcuts, fallback)
+	}
+	return shortcuts
+}
+
+func eventShortcuts(event Event) []string {
+	return mergeShortcuts(event.Shortcuts, event.Shortcut)
+}
+
+func mergeShortcuts(existing []string, additions ...string) []string {
+	result := append([]string(nil), existing...)
+	seen := make(map[string]bool, len(result))
+	for _, shortcut := range result {
+		seen[strings.ToUpper(strings.TrimSpace(shortcut))] = true
+	}
+	for _, shortcut := range additions {
+		shortcut = strings.TrimSpace(shortcut)
+		key := strings.ToUpper(shortcut)
+		if shortcut != "" && !seen[key] {
+			result = append(result, shortcut)
+			seen[key] = true
+		}
+	}
 	return result
 }
 
