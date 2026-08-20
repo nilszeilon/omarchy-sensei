@@ -2,8 +2,8 @@
 
 Omarchy Sensei is planned as two cooperating pieces:
 
-1. A Quickshell bar widget and panel for hints, progress, controls, and the activity graph.
-2. A small local companion service for normalizing semantic events, matching actions to shortcuts, and persisting aggregates.
+1. A Quickshell bar widget and panel containing the keyboard-first activity graph and one lesson.
+2. A small local companion CLI for normalizing semantic events, matching actions to shortcuts, and persisting local history.
 
 ## Event model
 
@@ -31,4 +31,4 @@ The MVP should prefer explicit Omarchy and Hyprland event sources over global in
 
 ## Storage
 
-SQLite is the likely local store, following the useful aggregation pattern in `nilszeilon/devstats`. Raw semantic events should have a short retention period; daily action counts and learned-shortcut totals can be retained for the lifetime graph.
+The first slice uses a private JSON Lines event log so the complete data path stays inspectable. It can move to SQLite when automatic sources and retention controls land. The graph counts only actions triggered by shortcuts. The lesson is the repeated menu or mouse action with the largest gap between slow and shortcut uses; five shortcut uses marks it learned.
