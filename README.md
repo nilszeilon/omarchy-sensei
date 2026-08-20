@@ -2,7 +2,7 @@
 
 Build keyboard-first Omarchy habits, one shortcut at a time.
 
-Omarchy Sensei is a privacy-first coaching plugin for [Omarchy Quattro](https://github.com/basecamp/omarchy). It aims to notice repeated, slow interaction patterns, teach the matching keyboard shortcut, and celebrate the habits that stick.
+Omarchy Sensei is a privacy-first coaching plugin for [Omarchy Quattro](https://github.com/basecamp/omarchy). It notices slow interaction patterns, teaches the matching keyboard shortcut, and celebrates the habits that stick.
 
 > [!IMPORTANT]
 Sensei automatically observes activated Omarchy keyboard bindings and a curated set of equivalent menu actions. It never records ordinary typing.
@@ -19,7 +19,7 @@ Sensei automatically observes activated Omarchy keyboard bindings and a curated 
 
 1. Observe an action such as opening the browser from a menu.
 2. Match it to an existing Omarchy shortcut such as `SUPER + B`.
-3. Wait for repetition before offering a quiet, rate-limited hint.
+3. Show the highest-impact unlearned shortcut in the panel.
 4. Detect adoption and record the shortcut as learned.
 5. Show a GitHub-style graph of keyboard-first activity.
 6. For actions without shortcuts, create a reviewable, privacy-safe context bundle that an agent can use to propose one.

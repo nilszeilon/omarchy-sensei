@@ -32,7 +32,7 @@ The MVP should prefer explicit Omarchy and Hyprland event sources over global in
 
 ## Recommendation loop
 
-- Require repeated observations before recommending anything.
+- Recommend the highest-impact observed slow action as soon as it has a known shortcut.
 - Rate-limit hints and provide snooze and disable controls.
 - Count a shortcut as learned only after repeat use across multiple sessions.
 - Estimate time saved from measured local baselines and label the number as an estimate.
@@ -40,4 +40,4 @@ The MVP should prefer explicit Omarchy and Hyprland event sources over global in
 
 ## Storage
 
-The first release uses a private JSON Lines event log so the complete data path stays inspectable. The graph counts only actions triggered by shortcuts. The lesson is the repeated menu or mouse action with the largest gap between slow and shortcut uses; five shortcut uses marks it learned. Observation can be paused, resumed, inspected, or cleared from the CLI.
+The first release uses a private JSON Lines event log so the complete data path stays inspectable. The graph counts only actions triggered by shortcuts. The lesson is the menu or mouse action with the largest gap between slow and shortcut uses; it appears after the first observed slow use, and five shortcut uses marks it learned. Observation can be paused, resumed, inspected, or cleared from the CLI.

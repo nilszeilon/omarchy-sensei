@@ -25,6 +25,7 @@ type Event struct {
 type Day struct {
 	Date  string `json:"date"`
 	Count int    `json:"count"`
+	Today bool   `json:"today,omitempty"`
 }
 
 type Hint struct {
@@ -330,7 +331,7 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		}
 		date := day.Format("2006-01-02")
 		count := counts[date]
-		result.Days = append(result.Days, Day{Date: date, Count: count})
+		result.Days = append(result.Days, Day{Date: date, Count: count, Today: day.Equal(today)})
 		if count > result.MaxCount {
 			result.MaxCount = count
 		}
@@ -339,7 +340,7 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 	var candidates []Hint
 	for _, entry := range scores {
 		hint := entry.hint
-		if hint.Shortcut == "" || hint.SlowUses < 3 || hint.FastUses >= 5 {
+		if hint.Shortcut == "" || hint.SlowUses < 1 || hint.FastUses >= 5 {
 			continue
 		}
 		hint.Avoided = hint.SlowUses - hint.FastUses

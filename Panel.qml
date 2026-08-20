@@ -46,7 +46,7 @@ Panel {
     bar: root.bar
     open: root.opened
     focusTarget: keyCatcher
-    contentWidth: panel.fittedContentWidth(Style.space(520))
+    contentWidth: panel.fittedContentWidth(Style.space(300))
     contentHeight: panel.fittedContentHeight(content.implicitHeight)
 
     PanelKeyCatcher {
@@ -82,7 +82,11 @@ Panel {
           }
 
           Row {
-            spacing: 2
+            id: heatmap
+            width: parent.width
+            readonly property real cellGap: 2
+            readonly property real cellSize: Math.max(3, Math.floor((width - (52 * cellGap)) / 53))
+            spacing: cellGap
 
             Repeater {
               model: 53
@@ -91,7 +95,7 @@ Panel {
                 id: weekColumn
                 required property int index
                 readonly property int weekIndex: index
-                spacing: 2
+                spacing: heatmap.cellGap
 
                 Repeater {
                   model: 7
@@ -100,12 +104,14 @@ Panel {
                     required property int index
                     readonly property int dayIndex: weekColumn.weekIndex * 7 + index
                     readonly property var day: dayIndex < stats.days.length ? stats.days[dayIndex] : null
-                    width: 7
-                    height: 7
+                    width: heatmap.cellSize
+                    height: heatmap.cellSize
                     radius: 1.5
                     color: day && day.count > 0
                       ? root.alpha(root.accent, root.intensity(Number(day.count)))
                       : root.alpha(root.foreground, 0.1)
+                    border.width: day && day.today ? 1 : 0
+                    border.color: root.foreground
 
                     ToolTip.visible: hover.hovered && day !== null && String(day.date || "") !== ""
                     ToolTip.text: day && day.date ? day.date + " · " + day.count + " keyboard actions" : ""
@@ -148,8 +154,10 @@ Panel {
                 : stats.paused
                   ? "Resume with omarchy-sensei resume."
                 : stats.hint
-                  ? stats.hint.title + " was done the slow way " + stats.hint.slowUses + " times. Use " + stats.hint.shortcut + "."
-                  : "No repeated unlearned shortcut yet."
+                  ? stats.hint.title + " was done the slow way " + stats.hint.slowUses
+                    + (stats.hint.slowUses === 1 ? " time. Use " : " times. Use ")
+                    + stats.hint.shortcut + "."
+                  : "No unlearned shortcut yet."
               color: root.foreground
               opacity: 0.82
               font.family: root.fontFamily
