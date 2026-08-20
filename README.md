@@ -20,7 +20,7 @@ Sensei automatically observes activated Omarchy keyboard bindings and a curated 
 1. Observe an action such as opening the browser from a menu.
 2. Match it to an existing Omarchy shortcut such as `SUPER + B`.
 3. Show the highest-impact unlearned shortcut in the panel.
-4. Detect adoption and record the shortcut as learned.
+4. Remove the lesson after the first matching shortcut use.
 5. Compare recognized mouse/menu actions with Omarchy shortcuts across the last seven days.
 6. For actions without shortcuts, create a reviewable, privacy-safe context bundle that an agent can use to propose one.
 

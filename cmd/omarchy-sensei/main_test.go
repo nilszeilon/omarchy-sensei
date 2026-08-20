@@ -14,17 +14,16 @@ func TestBuildSnapshotChoosesWorstUnlearnedAction(t *testing.T) {
 	for i := 0; i < 3; i++ {
 		events = append(events, Event{OccurredAt: now, Action: "terminal", Title: "Open terminal", Trigger: "mouse", Shortcut: "SUPER+RETURN"})
 	}
-	events = append(events, Event{OccurredAt: now, Action: "browser", Title: "Open browser", Trigger: "shortcut", Shortcut: "SUPER+B"})
 
 	result := buildSnapshot(events, now)
 	if result.Hint == nil || result.Hint.Action != "browser" {
 		t.Fatalf("expected browser hint, got %#v", result.Hint)
 	}
-	if result.Hint.Avoided != 6 {
-		t.Fatalf("expected score 6, got %d", result.Hint.Avoided)
+	if result.Hint.Avoided != 7 {
+		t.Fatalf("expected score 7, got %d", result.Hint.Avoided)
 	}
-	if got := countForDay(result.ShortcutDays, "2026-08-20"); got != 1 {
-		t.Fatalf("expected one shortcut today, got %d", got)
+	if got := countForDay(result.ShortcutDays, "2026-08-20"); got != 0 {
+		t.Fatalf("expected no shortcuts today, got %d", got)
 	}
 }
 
@@ -99,11 +98,9 @@ func TestBuildSnapshotHidesLearnedAction(t *testing.T) {
 	for i := 0; i < 8; i++ {
 		events = append(events, Event{OccurredAt: now, Action: "browser", Title: "Open browser", Trigger: "menu", Shortcut: "SUPER+B"})
 	}
-	for i := 0; i < 5; i++ {
-		events = append(events, Event{OccurredAt: now, Action: "browser", Title: "Open browser", Trigger: "shortcut", Shortcut: "SUPER+B"})
-	}
+	events = append(events, Event{OccurredAt: now, Action: "browser", Title: "Open browser", Trigger: "shortcut", Shortcut: "SUPER+B"})
 
 	if hint := buildSnapshot(events, now).Hint; hint != nil {
-		t.Fatalf("expected learned action to be hidden, got %#v", hint)
+		t.Fatalf("expected action to be hidden after its first shortcut use, got %#v", hint)
 	}
 }

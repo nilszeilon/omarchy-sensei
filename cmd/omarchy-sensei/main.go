@@ -348,7 +348,7 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 	var candidates []Hint
 	for _, entry := range scores {
 		hint := entry.hint
-		if hint.Shortcut == "" || hint.SlowUses < 1 || hint.FastUses >= 5 {
+		if hint.Shortcut == "" || hint.SlowUses < 1 || hint.FastUses > 0 {
 			continue
 		}
 		hint.Avoided = hint.SlowUses - hint.FastUses

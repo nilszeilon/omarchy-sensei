@@ -40,4 +40,4 @@ The MVP should prefer explicit Omarchy and Hyprland event sources over global in
 
 ## Storage
 
-The first release uses a private JSON Lines event log so the complete data path stays inspectable. Two aligned graphs compare recognized menu/mouse actions and Omarchy shortcuts over the last seven days on one shared scale. The lesson is the menu or mouse action with the largest gap between slow and shortcut uses; it appears after the first observed slow use, and five shortcut uses marks it learned. Observation can be paused, resumed, inspected, or cleared from the CLI.
+The first release uses a private JSON Lines event log so the complete data path stays inspectable. Two aligned graphs compare recognized menu/mouse actions and Omarchy shortcuts over the last seven days on one shared scale. The panel shows only the highest-value menu or mouse action whose known shortcut has never been used; the first matching shortcut use removes that lesson. Sensei does not send hint notifications. Observation can be paused, resumed, inspected, or cleared from the CLI.
