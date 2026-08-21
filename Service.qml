@@ -11,6 +11,7 @@ Item {
   property bool ready: false
   property string error: ""
   property string stderrText: ""
+  property int refreshAttempts: 0
 
   readonly property string sourceDir: manifest && manifest.__sourceDir
     ? String(manifest.__sourceDir)
@@ -24,6 +25,13 @@ Item {
     root.stderrText = ""
     setupProcess.command = ["python3", root.helperPath, "setup"]
     setupProcess.running = true
+  }
+
+  function refreshCatalog() {
+    if (!root.helperPath || refreshProcess.running || root.refreshAttempts >= 30) return
+    root.refreshAttempts += 1
+    refreshProcess.command = ["python3", root.helperPath, "refresh"]
+    refreshProcess.running = true
   }
 
   Component.onCompleted: Qt.callLater(root.setup)
@@ -43,6 +51,28 @@ Item {
       }
       root.ready = true
       reloadProcess.running = true
+      refreshTimer.start()
+    }
+  }
+
+  // Hyprland's live binding catalog may not be ready at the instant the shell
+  // loads third-party services. Retry for up to five minutes; refresh refuses
+  // to overwrite the last useful catalog with an empty startup result.
+  Timer {
+    id: refreshTimer
+    interval: 10000
+    repeat: false
+    onTriggered: root.refreshCatalog()
+  }
+
+  Process {
+    id: refreshProcess
+    onExited: function(exitCode) {
+      if (exitCode === 0) {
+        root.error = ""
+        return
+      }
+      if (root.refreshAttempts < 30) refreshTimer.start()
     }
   }
 

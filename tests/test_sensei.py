@@ -4,6 +4,7 @@ import sys
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import sensei  # noqa: E402
@@ -87,6 +88,18 @@ class SenseiTests(unittest.TestCase):
         self.assertEqual(state.total_shortcuts, 1)
         self.assertFalse(self.paths.legacy_events.exists())
         self.assertTrue(self.paths.state.exists())
+
+    def test_empty_startup_refresh_preserves_last_binding_catalog(self):
+        self.paths.state_dir.mkdir(parents=True)
+        previous = '[{"description":"Terminal","shortcuts":["SUPER + RETURN"]}]\n'
+        self.paths.binding_cache.write_text(previous)
+
+        empty = sensei.Catalog([], [], [])
+        with mock.patch.object(sensei, "load_catalog", return_value=empty):
+            with self.assertRaisesRegex(ValueError, "bindings are not ready"):
+                sensei.refresh_integration(self.paths)
+
+        self.assertEqual(self.paths.binding_cache.read_text(), previous)
 
 
 if __name__ == "__main__":

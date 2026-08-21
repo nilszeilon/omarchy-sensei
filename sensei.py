@@ -905,14 +905,20 @@ def setup_integration(paths: Paths) -> Catalog:
     install_self(paths)
     install_hypr_integration(paths)
     catalog = load_catalog(paths)
-    install_menu_integration(paths, catalog)
-    install_binding_cache(paths, catalog)
+    # Quickshell can load the service while Hyprland is still publishing its
+    # bindings.  Do not replace a useful catalog with an empty startup result;
+    # Service.qml retries ``refresh`` once the compositor is ready.
+    if catalog.matches:
+        install_menu_integration(paths, catalog)
+        install_binding_cache(paths, catalog)
     install_refresh_watcher(paths)
     return catalog
 
 
 def refresh_integration(paths: Paths) -> Catalog:
     catalog = load_catalog(paths)
+    if not catalog.matches:
+        raise ValueError("Omarchy bindings are not ready yet")
     install_menu_integration(paths, catalog)
     install_binding_cache(paths, catalog)
     return catalog
