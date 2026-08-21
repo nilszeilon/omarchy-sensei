@@ -1,4 +1,6 @@
 import datetime as dt
+import contextlib
+import io
 import json
 import sys
 import tempfile
@@ -100,6 +102,26 @@ class SenseiTests(unittest.TestCase):
                 sensei.refresh_integration(self.paths)
 
         self.assertEqual(self.paths.binding_cache.read_text(), previous)
+
+    def test_pause_resume_clear_and_diagnostic_snapshot(self):
+        at = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
+        self.observe("open-menu", "Open Menu", "mouse", at, "SUPER + SPACE")
+
+        with mock.patch.object(sensei.Paths, "current", return_value=self.paths):
+            sensei.main(["pause"])
+            self.assertTrue(self.paths.paused.exists())
+
+            output = io.StringIO()
+            with contextlib.redirect_stdout(output):
+                sensei.main(["snapshot"])
+            snapshot = json.loads(output.getvalue())
+            self.assertTrue(snapshot["paused"])
+            self.assertEqual(snapshot["tasks"][0]["action"], "open-menu")
+
+            sensei.main(["resume"])
+            self.assertFalse(self.paths.paused.exists())
+            sensei.main(["clear"])
+            self.assertFalse(self.paths.state.exists())
 
 
 if __name__ == "__main__":
