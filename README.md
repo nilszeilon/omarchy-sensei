@@ -15,7 +15,7 @@ Using the mouse for that action again reopens the task. The worst habit stays at
 
 ## Install
 
-Requires Omarchy Quattro and either Go 1.24+ or `mise`. Installation uses only user-level files and services; it never requires `sudo`.
+Requires Omarchy Quattro and either Go 1.24+ or `mise`. Installation uses only user-level files and services with no elevated privileges.
 
 ```sh
 omarchy plugin add https://github.com/nilszeilon/omarchy-sensei.git --enable
