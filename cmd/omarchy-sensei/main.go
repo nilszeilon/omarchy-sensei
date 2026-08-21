@@ -5,28 +5,25 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
-	"sort"
 	"strings"
 	"time"
 )
 
-type Event struct {
-	OccurredAt time.Time `json:"occurredAt"`
-	Action     string    `json:"action"`
-	Title      string    `json:"title"`
-	Trigger    string    `json:"trigger"`
-	Shortcut   string    `json:"shortcut,omitempty"`
-	Shortcuts  []string  `json:"shortcuts,omitempty"`
+type Observation struct {
+	ObservedAt time.Time
+	Action     string
+	Title      string
+	Trigger    string
+	Shortcut   string
+	Shortcuts  []string
 }
 
 type Task struct {
 	Action    string    `json:"action"`
 	Title     string    `json:"title"`
-	Shortcut  string    `json:"shortcut"`
 	Shortcuts []string  `json:"shortcuts"`
 	OpenedAt  time.Time `json:"openedAt"`
 	SlowUses  int       `json:"slowUses"`
@@ -50,7 +47,7 @@ type Snapshot struct {
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal("usage: omarchy-sensei <setup|refresh|catalog|doctor|uninstall|record|coach-click|run|snapshot|pause|resume|clear|status>")
+		fatal("usage: omarchy-sensei <setup|refresh|catalog|doctor|uninstall|complete|coach-click|run|snapshot|pause|resume|clear|status>")
 	}
 
 	paths, err := senseiPaths()
@@ -60,10 +57,13 @@ func main() {
 
 	switch os.Args[1] {
 	case "setup":
+		if err := initializeState(paths); err != nil {
+			fatal(err.Error())
+		}
 		if err := setupIntegration(paths); err != nil {
 			fatal(err.Error())
 		}
-		fmt.Println("Omarchy Sensei observation is installed. Run `hyprctl reload` to activate it.")
+		fmt.Println("Omarchy Sensei coaching is installed. Run `hyprctl reload` to activate it.")
 	case "refresh":
 		catalog, err := refreshIntegration(paths)
 		if err != nil {
@@ -78,9 +78,9 @@ func main() {
 		if err := uninstallIntegration(paths); err != nil {
 			fatal(err.Error())
 		}
-		fmt.Println("Omarchy Sensei observation was removed. Your activity data was kept.")
-	case "record":
-		record(paths, os.Args[2:])
+		fmt.Println("Omarchy Sensei coaching was removed. Your progress and open tasks were kept.")
+	case "complete":
+		completeTask(paths, os.Args[2:])
 	case "coach-click":
 		coachClick(paths, os.Args[2:])
 	case "run":
@@ -96,7 +96,7 @@ func main() {
 			fatal(err.Error())
 		}
 	case "clear":
-		if err := clearEvents(paths); err != nil {
+		if err := clearState(paths); err != nil {
 			fatal(err.Error())
 		}
 	case "status":
@@ -136,8 +136,8 @@ func coachClick(paths Paths, args []string) {
 	}
 	binding = groupedClickBinding(bindings, *workspace, binding)
 
-	if err := recordEvent(paths, Event{
-		OccurredAt: time.Now(),
+	if err := updateCoachingState(paths, Observation{
+		ObservedAt: time.Now(),
 		Action:     actionID(binding.Description),
 		Title:      binding.Description,
 		Trigger:    "mouse",
@@ -260,35 +260,23 @@ func doctor(paths Paths) {
 	fmt.Printf("Sensei is healthy: %d coached menu actions, %d unmatched menu actions, refresh watcher active.\n", len(catalog.Matches), len(catalog.UnmatchedMenu))
 }
 
-func record(paths Paths, args []string) {
-	flags := flag.NewFlagSet("record", flag.ExitOnError)
+func completeTask(paths Paths, args []string) {
+	flags := flag.NewFlagSet("complete", flag.ExitOnError)
 	action := flags.String("action", "", "stable semantic action id")
 	title := flags.String("title", "", "human-readable action name")
-	trigger := flags.String("trigger", "", "shortcut, menu, mouse, command, or agent")
-	shortcut := flags.String("shortcut", "", "known shortcut for the action")
 	_ = flags.Parse(args)
 
-	event := Event{
-		OccurredAt: time.Now(),
+	observation := Observation{
+		ObservedAt: time.Now(),
 		Action:     strings.TrimSpace(*action),
 		Title:      strings.TrimSpace(*title),
-		Trigger:    strings.TrimSpace(*trigger),
-		Shortcut:   strings.TrimSpace(*shortcut),
+		Trigger:    "shortcut",
 	}
-	if event.Action == "" || event.Title == "" || !validTrigger(event.Trigger) {
-		fatal("record requires --action, --title, and a valid --trigger")
-	}
-	if event.Trigger != "shortcut" {
-		event.Shortcuts = resolveCurrentShortcuts(event.Title, event.Shortcut)
-		if len(event.Shortcuts) > 0 {
-			event.Shortcut = event.Shortcuts[0]
-		}
-	}
-	if event.Trigger != "shortcut" && event.Shortcut == "" {
-		fatal("non-shortcut actions require --shortcut so Sensei can teach them")
+	if observation.Action == "" || observation.Title == "" {
+		fatal("complete requires --action and --title")
 	}
 
-	if err := recordEvent(paths, event); err != nil {
+	if err := updateCoachingState(paths, observation); err != nil {
 		fatal(err.Error())
 	}
 }
@@ -304,8 +292,8 @@ func run(paths Paths, args []string) {
 		fatal("run requires --action, --title, --shortcut, and one command after --")
 	}
 	currentShortcuts := resolveCurrentShortcuts(strings.TrimSpace(*title), strings.TrimSpace(*shortcut))
-	if err := recordEvent(paths, Event{
-		OccurredAt: time.Now(),
+	if err := updateCoachingState(paths, Observation{
+		ObservedAt: time.Now(),
 		Action:     strings.TrimSpace(*action),
 		Title:      strings.TrimSpace(*title),
 		Trigger:    "menu",
@@ -329,12 +317,11 @@ func run(paths Paths, args []string) {
 }
 
 func snapshot(paths Paths) {
-	events, err := loadEvents(paths.Events)
+	state, err := readState(paths, time.Now())
 	if err != nil {
 		fatal(err.Error())
 	}
-	result := buildSnapshot(events, time.Now())
-	result.Paused = isPaused(paths)
+	result := snapshotFromState(state, isPaused(paths))
 	encoder := json.NewEncoder(os.Stdout)
 	encoder.SetEscapeHTML(false)
 	if err := encoder.Encode(result); err != nil {
@@ -342,19 +329,12 @@ func snapshot(paths Paths) {
 	}
 }
 
-func validTrigger(trigger string) bool {
-	switch trigger {
-	case "shortcut", "menu", "mouse", "command", "agent":
-		return true
-	default:
-		return false
-	}
-}
-
 type Paths struct {
 	Home           string
 	StateDir       string
-	Events         string
+	State          string
+	StateLock      string
+	LegacyEvents   string
 	BindingCache   string
 	Paused         string
 	HyprlandConfig string
@@ -380,7 +360,9 @@ func senseiPaths() (Paths, error) {
 	return Paths{
 		Home:           home,
 		StateDir:       stateDir,
-		Events:         filepath.Join(stateDir, "events.jsonl"),
+		State:          filepath.Join(stateDir, "state.json"),
+		StateLock:      filepath.Join(stateDir, "state.lock"),
+		LegacyEvents:   filepath.Join(stateDir, "events.jsonl"),
 		BindingCache:   filepath.Join(stateDir, "bindings.json"),
 		Paused:         filepath.Join(stateDir, "paused"),
 		HyprlandConfig: filepath.Join(home, ".config", "hypr", "hyprland.lua"),
@@ -428,49 +410,6 @@ func printCatalog(paths Paths, args []string) {
 	}
 }
 
-func recordEvent(paths Paths, event Event) error {
-	if isPaused(paths) {
-		return nil
-	}
-	return appendEvent(paths.Events, event)
-}
-
-func appendEvent(path string, event Event) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
-		return err
-	}
-	file, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o600)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-	return json.NewEncoder(file).Encode(event)
-}
-
-func loadEvents(path string) ([]Event, error) {
-	file, err := os.Open(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil, nil
-	}
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
-	var events []Event
-	decoder := json.NewDecoder(file)
-	for {
-		var event Event
-		if err := decoder.Decode(&event); errors.Is(err, io.EOF) {
-			break
-		} else if err != nil {
-			return nil, err
-		}
-		events = append(events, event)
-	}
-	return events, nil
-}
-
 func setPaused(paths Paths, paused bool) error {
 	if paused {
 		if err := os.MkdirAll(paths.StateDir, 0o700); err != nil {
@@ -490,118 +429,20 @@ func isPaused(paths Paths) bool {
 	return err == nil
 }
 
-func clearEvents(paths Paths) error {
-	err := os.Remove(paths.Events)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	return err
-}
-
 func printStatus(paths Paths) {
-	events, err := loadEvents(paths.Events)
+	state, err := readState(paths, time.Now())
 	if err != nil {
 		fatal(err.Error())
 	}
 	status := struct {
-		Paused    bool `json:"paused"`
-		Events    int  `json:"events"`
-		Installed bool `json:"installed"`
-	}{isPaused(paths), len(events), integrationInstalled(paths)}
+		Paused         bool `json:"paused"`
+		TotalShortcuts int  `json:"totalShortcuts"`
+		OpenTasks      int  `json:"openTasks"`
+		Installed      bool `json:"installed"`
+	}{isPaused(paths), state.TotalShortcuts, len(state.Tasks), integrationInstalled(paths)}
 	if err := json.NewEncoder(os.Stdout).Encode(status); err != nil {
 		fatal(err.Error())
 	}
-}
-
-func buildSnapshot(events []Event, now time.Time) Snapshot {
-	_ = now
-	ordered := append([]Event(nil), events...)
-	for index := range ordered {
-		ordered[index] = normalizeLearningEvent(ordered[index])
-	}
-	sort.SliceStable(ordered, func(i, j int) bool {
-		return ordered[i].OccurredAt.Before(ordered[j].OccurredAt)
-	})
-
-	open := map[string]*Task{}
-	knownShortcuts := map[string][]string{}
-	lastShortcutAt := map[string]time.Time{}
-	for _, event := range ordered {
-		if event.Trigger == "shortcut" && event.Shortcut != "" && !isGroupedAction(event.Action) {
-			knownShortcuts[event.Action] = mergeShortcuts(knownShortcuts[event.Action], event.Shortcut)
-		}
-	}
-	for _, event := range ordered {
-		if event.Action == "" {
-			continue
-		}
-		switch event.Trigger {
-		case "menu", "mouse":
-			// Some shortcuts intentionally route through an instrumented Omarchy
-			// menu action. That menu event is the shortcut's consequence, not a
-			// second slow use, so do not reopen the task it just completed.
-			if event.Trigger == "menu" && !lastShortcutAt[event.Action].IsZero() &&
-				event.OccurredAt.Sub(lastShortcutAt[event.Action]) >= 0 &&
-				event.OccurredAt.Sub(lastShortcutAt[event.Action]) < time.Second {
-				continue
-			}
-			shortcuts := eventShortcuts(event)
-			if len(shortcuts) == 0 {
-				continue
-			}
-			task := open[event.Action]
-			if task == nil {
-				task = &Task{Action: event.Action, OpenedAt: event.OccurredAt}
-				open[event.Action] = task
-			}
-			task.Title = event.Title
-			task.Shortcuts = mergeShortcuts(shortcuts, knownShortcuts[event.Action]...)
-			task.Shortcut = task.Shortcuts[0]
-			task.SlowUses++
-		case "shortcut":
-			lastShortcutAt[event.Action] = event.OccurredAt
-			delete(open, event.Action)
-		}
-	}
-
-	result := Snapshot{
-		Tasks: make([]Task, 0, len(open)),
-		Level: levelProgress(countShortcutUses(ordered)),
-	}
-	for _, task := range open {
-		result.Tasks = append(result.Tasks, *task)
-	}
-	sort.Slice(result.Tasks, func(i, j int) bool {
-		if result.Tasks[i].SlowUses != result.Tasks[j].SlowUses {
-			return result.Tasks[i].SlowUses > result.Tasks[j].SlowUses
-		}
-		return result.Tasks[i].OpenedAt.Before(result.Tasks[j].OpenedAt)
-	})
-	return result
-}
-
-func countShortcutUses(events []Event) int {
-	const duplicateWindow = 100 * time.Millisecond
-	lastUse := map[string]time.Time{}
-	total := 0
-	for _, event := range events {
-		if event.Trigger != "shortcut" {
-			continue
-		}
-		key := canonicalShortcut(event.Shortcut)
-		if key == "" {
-			key = event.Action
-		}
-		if previous := lastUse[key]; !previous.IsZero() {
-			elapsed := event.OccurredAt.Sub(previous)
-			if elapsed >= 0 && elapsed < duplicateWindow {
-				continue
-			}
-		}
-		lastUse[key] = event.OccurredAt
-		total++
-	}
-	return total
 }
 
 func levelProgress(total int) LevelProgress {
@@ -627,22 +468,22 @@ func levelProgress(total int) LevelProgress {
 	}
 }
 
-func normalizeLearningEvent(event Event) Event {
-	if isWorkspaceSwitchDescription(event.Title) || strings.HasPrefix(event.Action, "switch-to-workspace-") ||
-		event.Action == "next-workspace" || event.Action == "previous-workspace" || event.Action == "former-workspace" {
-		event.Action = "workspace-switching"
-		event.Title = "Workspace switching"
-		if event.Trigger != "shortcut" {
-			event.Shortcut = "SUPER + TAB"
-			event.Shortcuts = []string{"SUPER + TAB"}
+func normalizeObservation(observation Observation) Observation {
+	if isWorkspaceSwitchDescription(observation.Title) || strings.HasPrefix(observation.Action, "switch-to-workspace-") ||
+		observation.Action == "next-workspace" || observation.Action == "previous-workspace" || observation.Action == "former-workspace" {
+		observation.Action = "workspace-switching"
+		observation.Title = "Workspace switching"
+		if observation.Trigger != "shortcut" {
+			observation.Shortcut = "SUPER + TAB"
+			observation.Shortcuts = []string{"SUPER + TAB"}
 		}
-		return event
+		return observation
 	}
-	if isPositionalPanelDescription(event.Title) || strings.HasPrefix(event.Action, "bar-panel-") {
-		event.Action = "bar-panels"
-		event.Title = "Bar panels"
+	if isPositionalPanelDescription(observation.Title) || strings.HasPrefix(observation.Action, "bar-panel-") {
+		observation.Action = "bar-panels"
+		observation.Title = "Bar panels"
 	}
-	return event
+	return observation
 }
 
 func isWorkspaceSwitchDescription(description string) bool {
@@ -698,8 +539,8 @@ func shortcutsFromKeybindings(data []byte, title, fallback string) []string {
 	return shortcuts
 }
 
-func eventShortcuts(event Event) []string {
-	return mergeShortcuts(event.Shortcuts, event.Shortcut)
+func observationShortcuts(observation Observation) []string {
+	return mergeShortcuts(observation.Shortcuts, observation.Shortcut)
 }
 
 func mergeShortcuts(existing []string, additions ...string) []string {

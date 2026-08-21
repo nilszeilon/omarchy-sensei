@@ -47,7 +47,7 @@ Item {
     id: snapshotProcess
     command: ["omarchy-sensei", "snapshot"]
     onExited: function(exitCode) {
-      if (exitCode !== 0) root.error = "Install the omarchy-sensei collector to begin tracking."
+      if (exitCode !== 0) root.error = "Install the omarchy-sensei helper to begin coaching."
     }
     stdout: StdioCollector {
       waitForEnd: true
