@@ -9,7 +9,7 @@ Sensei has one loop:
 3. Perform that action once with the shortcut.
 4. The task closes.
 
-Using the mouse for that action again reopens the task. Sensei never records ordinary typing, clipboard contents, terminal text, passwords, or document contents.
+Using the mouse for that action again reopens the task. The worst habit stays at the top until you perform it with the keyboard.
 
 ## Install
 
@@ -19,13 +19,15 @@ cd ~/.config/omarchy/plugins/io.github.nilszeilon.omarchy-sensei
 ./install.sh
 ```
 
-The installer builds the local collector, derives a coaching catalog from Omarchy's live menu and Super+K bindings, and connects every confident match. Sensei also observes Omarchy Shell's semantic bar-button registry: workspace clicks retain their workspace number, built-in panels use their direct shortcut, and custom panels use the live `Bar panel N` shortcut. There is no hardcoded panel or action list, and it never edits `/usr/share/omarchy`.
+The installer builds the local helper, derives a coaching catalog from Omarchy's live menu and Super+K bindings, and connects every confident match. Sensei also uses Omarchy Shell's semantic bar-button registry: workspace clicks retain their workspace number, built-in panels use their direct shortcut, and custom panels use the live `Bar panel N` shortcut. There is no hardcoded panel or action list, and it never edits `/usr/share/omarchy`.
 
 Task hints resolve against the active Hyprland bindings, so user remaps take precedence over Omarchy defaults. Clicks without a keyboard equivalent are ignored.
 
 Equivalent habits share one task: every numbered workspace click contributes to `Workspace switching`, and `Super+Tab` or any numbered workspace shortcut completes it. Panels without a named shortcut contribute to `Bar panels`; any positional bar-panel shortcut completes that shared task. Named panels such as Bluetooth stay independent and require their named shortcut.
 
-The panel also shows a lifetime shortcut level. Level 1 takes 10 shortcut uses; each following level requires 50% more than the previous one, rounded up. The total shortcut count, current level, next level, and progress are derived locally from the existing event history.
+The panel also shows a lifetime shortcut level. Level 1 takes 10 shortcut uses; each following level requires 50% more than the previous one, rounded up.
+
+Sensei stores no action or keypress history. Its private local state contains only the lifetime shortcut total and currently open tasks. Task records contain the action name, current shortcut hints, offender count, and opening time. A sub-second duplicate guard is discarded automatically. Nothing is sent over the network.
 
 The catalog refreshes automatically after menu or personal binding changes and after Omarchy updates. Inspect its decisions with:
 
@@ -47,7 +49,7 @@ omarchy-sensei resume
 omarchy-sensei clear
 ```
 
-Events stay in `$XDG_STATE_HOME/omarchy-sensei/` or `~/.local/state/omarchy-sensei/`.
+State stays in `$XDG_STATE_HOME/omarchy-sensei/state.json` or `~/.local/state/omarchy-sensei/state.json`, with mode `0600`. `clear` permanently deletes progress and open tasks. Upgrading from a pre-2.0 release compacts the old history once and then permanently deletes `events.jsonl`.
 
 ## Remove
 

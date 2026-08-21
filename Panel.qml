@@ -265,7 +265,7 @@ Panel {
                     spacing: Style.space(5)
 
                     Repeater {
-                      model: taskCard.modelData.shortcuts || [taskCard.modelData.shortcut]
+                      model: taskCard.modelData.shortcuts || []
 
                       Rectangle {
                         required property string modelData

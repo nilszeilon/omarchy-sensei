@@ -19,7 +19,7 @@ const (
 
 func setupIntegration(paths Paths) error {
 	if err := installSelf(paths.LocalBinary); err != nil {
-		return fmt.Errorf("install collector: %w", err)
+		return fmt.Errorf("install helper: %w", err)
 	}
 	if err := installHyprIntegration(paths); err != nil {
 		return fmt.Errorf("install Hyprland integration: %w", err)
@@ -209,9 +209,8 @@ func senseiLua() string {
     end
 
     local action, title = coaching_identity(description)
-    local command = "omarchy-sensei record --action " .. quote(action)
+    local command = "omarchy-sensei complete --action " .. quote(action)
       .. " --title " .. quote(title)
-      .. " --trigger shortcut --shortcut " .. quote(key_text)
     return original(keys, function()
       hl.dispatch(dispatcher)
       hl.exec_cmd(command)

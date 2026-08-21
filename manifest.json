@@ -2,17 +2,17 @@
   "schemaVersion": 1,
   "id": "io.github.nilszeilon.omarchy-sensei",
   "name": "Omarchy Sensei",
-  "version": "1.5.0",
+  "version": "2.0.0",
   "author": "Nils Zeilon",
   "license": "MIT",
-  "description": "Keyboard practice tasks created by the mouse actions you actually use.",
+  "description": "Turn mouse habits into keyboard-first Omarchy tasks.",
   "kinds": ["bar-widget"],
   "entryPoints": {
     "barWidget": "BarWidget.qml"
   },
   "barWidget": {
     "displayName": "Omarchy Sensei",
-    "description": "Complete mouse-created tasks and level up through keyboard-first Omarchy use.",
+    "description": "Clear mouse-created tasks with the right shortcut and level up.",
     "category": "Productivity",
     "aliases": ["sensei", "shortcut-coach", "keyboard-coach"],
     "allowMultiple": false,

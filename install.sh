@@ -10,7 +10,7 @@ if command -v go >/dev/null 2>&1 && go version >/dev/null 2>&1; then
 elif command -v mise >/dev/null 2>&1; then
   mise exec go@1.24 -- go build -o "$repo_dir/build/omarchy-sensei" ./cmd/omarchy-sensei
 else
-  echo "Omarchy Sensei needs Go 1.24 or mise to build its local collector." >&2
+  echo "Omarchy Sensei needs Go 1.24 or mise to build its local helper." >&2
   exit 1
 fi
 
@@ -23,4 +23,4 @@ if [[ -n "$errors" ]]; then
   exit 1
 fi
 
-echo "Omarchy Sensei is observing semantic shortcuts and matching menu actions."
+echo "Omarchy Sensei is ready: mouse habits become tasks, shortcuts clear them."

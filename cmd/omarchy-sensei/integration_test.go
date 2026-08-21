@@ -6,7 +6,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
+	"time"
 )
 
 func TestInstallHyprIntegrationIsIdempotent(t *testing.T) {
@@ -36,8 +38,11 @@ func TestInstallHyprIntegrationIsIdempotent(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(lua), "function hl.bind") || !strings.Contains(string(lua), "shortcut") {
+	if !strings.Contains(string(lua), "function hl.bind") || !strings.Contains(string(lua), "omarchy-sensei complete") {
 		t.Fatalf("generated integration does not wrap bindings:\n%s", lua)
+	}
+	if strings.Contains(string(lua), "--trigger") || strings.Contains(string(lua), "--shortcut") {
+		t.Fatalf("generated integration must not pass or retain shortcut chords:\n%s", lua)
 	}
 	if strings.Contains(string(lua), "record_options.transparent") || !strings.Contains(string(lua), "hl.dispatch(dispatcher)") {
 		t.Fatalf("generated observer must dispatch the original action in one binding:\n%s", lua)
@@ -104,17 +109,100 @@ func TestMenuIntegrationPreservesUserEntriesAndUninstalls(t *testing.T) {
 	}
 }
 
-func TestPausePreventsRecording(t *testing.T) {
+func TestPausePreventsCoachingUpdate(t *testing.T) {
 	dir := t.TempDir()
-	paths := Paths{StateDir: dir, Events: filepath.Join(dir, "events.jsonl"), Paused: filepath.Join(dir, "paused")}
+	paths := testStatePaths(dir)
 	if err := setPaused(paths, true); err != nil {
 		t.Fatal(err)
 	}
-	if err := recordEvent(paths, Event{Action: "test", Title: "Test", Trigger: "shortcut"}); err != nil {
+	if err := updateCoachingState(paths, Observation{Action: "test", Title: "Test", Trigger: "shortcut"}); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(paths.Events); !os.IsNotExist(err) {
-		t.Fatalf("paused recorder wrote an event")
+	if _, err := os.Stat(paths.State); !os.IsNotExist(err) {
+		t.Fatalf("paused coaching wrote state")
+	}
+}
+
+func TestLegacyHistoryIsCompactedAndDeleted(t *testing.T) {
+	dir := t.TempDir()
+	paths := testStatePaths(dir)
+	old := strings.Join([]string{
+		`{"occurredAt":"2026-08-21T12:00:00Z","action":"browser","title":"Open browser","trigger":"menu","shortcut":"SUPER + B"}`,
+		`{"occurredAt":"2026-08-21T12:00:01Z","action":"browser","title":"Open browser","trigger":"shortcut","shortcut":"SUPER + B"}`,
+		`{"occurredAt":"2026-08-21T12:00:02Z","action":"terminal","title":"Open terminal","trigger":"mouse","shortcut":"SUPER + RETURN"}`,
+		`{"occurredAt":"2026-08-21T12:00:03Z","action":"terminal","title":"Open terminal","trigger":"mouse","shortcut":"SUPER + RETURN"}`,
+		`{"occurredAt":"2026-08-21T12:00:04Z","action":"focus-next","title":"Focus next","trigger":"shortcut","shortcut":"ALT + TAB"}`,
+		`{"occurredAt":"2026-08-21T12:00:04.020Z","action":"reveal-active","title":"Reveal active","trigger":"shortcut","shortcut":"ALT + TAB"}`,
+	}, "\n") + "\n"
+	if err := os.WriteFile(paths.LegacyEvents, []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if err := initializeState(paths); err != nil {
+		t.Fatal(err)
+	}
+	state, err := readState(paths, time.Date(2026, 8, 21, 12, 1, 0, 0, time.UTC))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if state.TotalShortcuts != 2 || len(state.Tasks) != 1 || state.Tasks[0].Action != "terminal" || state.Tasks[0].SlowUses != 2 {
+		t.Fatalf("migration did not preserve compact progress: %#v", state)
+	}
+	if _, err := os.Stat(paths.LegacyEvents); !os.IsNotExist(err) {
+		t.Fatalf("legacy history still exists after migration: %v", err)
+	}
+	data, err := os.ReadFile(paths.State)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, forbidden := range []string{`"trigger"`, `"occurredAt"`, "focus-next", "SUPER + B", "ALT + TAB"} {
+		if strings.Contains(string(data), forbidden) {
+			t.Fatalf("compact state retained historical detail %q:\n%s", forbidden, data)
+		}
+	}
+	if err := initializeState(paths); err != nil {
+		t.Fatal(err)
+	}
+	state, err = readState(paths, time.Now())
+	if err != nil || state.TotalShortcuts != 2 {
+		t.Fatalf("migration was not idempotent: %#v, %v", state, err)
+	}
+}
+
+func TestConcurrentCoachingUpdatesAreNotLost(t *testing.T) {
+	dir := t.TempDir()
+	paths := testStatePaths(dir)
+	const updates = 40
+	var group sync.WaitGroup
+	group.Add(updates)
+	for index := 0; index < updates; index++ {
+		go func() {
+			defer group.Done()
+			err := updateCoachingState(paths, Observation{
+				ObservedAt: time.Now(), Action: "terminal", Title: "Open terminal",
+				Trigger: "mouse", Shortcut: "SUPER + RETURN",
+			})
+			if err != nil {
+				t.Errorf("update coaching state: %v", err)
+			}
+		}()
+	}
+	group.Wait()
+	state, err := readState(paths, time.Now())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(state.Tasks) != 1 || state.Tasks[0].SlowUses != updates {
+		t.Fatalf("concurrent updates were lost: %#v", state.Tasks)
+	}
+}
+
+func testStatePaths(dir string) Paths {
+	return Paths{
+		StateDir:     dir,
+		State:        filepath.Join(dir, "state.json"),
+		StateLock:    filepath.Join(dir, "state.lock"),
+		LegacyEvents: filepath.Join(dir, "events.jsonl"),
+		Paused:       filepath.Join(dir, "paused"),
 	}
 }
 
