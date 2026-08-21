@@ -81,6 +81,7 @@ Panel {
 
             Text {
               text: "Sensei Tasks"
+              textFormat: Text.PlainText
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.subtitle
@@ -88,6 +89,7 @@ Panel {
             }
             Text {
               text: "Use the shortcut to complete the task"
+              textFormat: Text.PlainText
               color: root.foreground
               opacity: 0.65
               font.family: root.fontFamily
@@ -98,6 +100,7 @@ Panel {
           Text {
             id: taskCount
             text: String(stats.tasks.length)
+            textFormat: Text.PlainText
             color: stats.tasks.length > 0 ? root.accent : root.foreground
             opacity: stats.tasks.length > 0 ? 1 : 0.55
             font.family: root.fontFamily
@@ -129,6 +132,7 @@ Panel {
               Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: String(stats.level.totalShortcuts || 0)
+                textFormat: Text.PlainText
                 color: root.foreground
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.display
@@ -138,6 +142,7 @@ Panel {
               Text {
                 anchors.horizontalCenter: parent.horizontalCenter
                 text: "TOTAL SHORTCUTS USED"
+                textFormat: Text.PlainText
                 color: root.foreground
                 opacity: 0.58
                 font.family: root.fontFamily
@@ -154,6 +159,7 @@ Panel {
               Text {
                 id: currentLevel
                 text: "LVL " + String(stats.level.level || 1)
+                textFormat: Text.PlainText
                 color: root.accent
                 font.family: root.fontFamily
                 font.pixelSize: Style.font.caption
@@ -179,6 +185,7 @@ Panel {
               Text {
                 id: nextLevel
                 text: "LVL " + String(stats.level.nextLevel || 2)
+                textFormat: Text.PlainText
                 color: root.foreground
                 opacity: 0.52
                 font.family: root.fontFamily
@@ -191,6 +198,7 @@ Panel {
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: String(stats.level.shortcutsRemaining || 0) + " shortcuts to level " + String(stats.level.nextLevel || 2)
+              textFormat: Text.PlainText
               color: root.foreground
               opacity: 0.58
               font.family: root.fontFamily
@@ -244,6 +252,7 @@ Panel {
                     Text {
                       width: parent.width - slowCount.implicitWidth
                       text: taskCard.modelData.title
+                      textFormat: Text.PlainText
                       color: root.foreground
                       font.family: root.fontFamily
                       font.pixelSize: Style.font.body
@@ -253,6 +262,7 @@ Panel {
                     Text {
                       id: slowCount
                       text: taskCard.modelData.slowUses > 1 ? "×" + taskCard.modelData.slowUses : ""
+                      textFormat: Text.PlainText
                       color: root.foreground
                       opacity: 0.5
                       font.family: root.fontFamily
@@ -279,6 +289,7 @@ Panel {
                           anchors.centerIn: parent
                           width: parent.width - Style.space(16)
                           text: parent.modelData
+                          textFormat: Text.PlainText
                           color: root.accent
                           font.family: root.fontFamily
                           font.pixelSize: Style.font.body
@@ -293,6 +304,7 @@ Panel {
                   Text {
                     width: parent.width
                     text: "Do it once with the keyboard to close this task."
+                    textFormat: Text.PlainText
                     color: root.foreground
                     opacity: 0.65
                     font.family: root.fontFamily
@@ -331,6 +343,7 @@ Panel {
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: "✓"
+              textFormat: Text.PlainText
               color: root.accent
               font.family: root.fontFamily
               font.pixelSize: Style.font.display
@@ -339,6 +352,7 @@ Panel {
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: "All clear"
+              textFormat: Text.PlainText
               color: root.foreground
               font.family: root.fontFamily
               font.pixelSize: Style.font.body
@@ -347,6 +361,7 @@ Panel {
             Text {
               anchors.horizontalCenter: parent.horizontalCenter
               text: "No keyboard practice waiting."
+              textFormat: Text.PlainText
               color: root.foreground
               opacity: 0.65
               font.family: root.fontFamily
@@ -359,6 +374,7 @@ Panel {
           visible: stats.error !== "" || stats.paused
           width: parent.width
           text: stats.error !== "" ? stats.error : "Sensei is paused."
+          textFormat: Text.PlainText
           color: root.foreground
           opacity: 0.7
           font.family: root.fontFamily
