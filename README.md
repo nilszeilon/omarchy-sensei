@@ -33,7 +33,7 @@ The goal is simple: fewer open tasks, more shortcuts used, and an Omarchy workfl
 
 ## Install
 
-Requires Omarchy Quattro and either Go 1.24+ or `mise`. Installation uses only user-level files and services with no elevated privileges.
+Requires Omarchy Quattro and Go 1.24+ installed locally. Installation uses only user-level files and services with no elevated privileges. The build is forced offline: it never downloads a Go toolchain or module dependency.
 
 ```sh
 omarchy plugin add https://github.com/nilszeilon/omarchy-sensei.git --enable
@@ -53,7 +53,7 @@ The panel shows your lifetime shortcut level above your tasks. Level 1 takes 10 
 
 ## Private by design
 
-Sensei stores no action or keypress history. Its private local state contains only the lifetime shortcut total and currently open tasks. Task records contain the action name, current shortcut hints, offender count, and opening time. A sub-second duplicate guard is discarded automatically. Nothing is sent over the network.
+Sensei stores no action or keypress history. Its private local state contains only the lifetime shortcut total and currently open tasks. Task records contain the action name, current shortcut hints, offender count, and opening time. A sub-second duplicate guard is discarded automatically. Sensei has no telemetry or network client; during normal use, all data stays local.
 
 The catalog refreshes automatically after menu or personal binding changes and after Omarchy updates. Inspect its decisions with:
 
