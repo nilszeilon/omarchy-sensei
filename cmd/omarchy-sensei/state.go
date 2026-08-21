@@ -101,7 +101,7 @@ func withLockedState(paths Paths, now time.Time, ensureFile bool, update func(*S
 func loadStateFile(path string) (SenseiState, bool, error) {
 	data, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
-		return SenseiState{Version: stateVersion}, false, nil
+		return SenseiState{Version: stateVersion, Tasks: []Task{}}, false, nil
 	}
 	if err != nil {
 		return SenseiState{}, false, err
@@ -218,7 +218,8 @@ func pruneTransientState(state *SenseiState, now time.Time) bool {
 }
 
 func snapshotFromState(state SenseiState, paused bool) Snapshot {
-	tasks := append([]Task(nil), state.Tasks...)
+	tasks := make([]Task, len(state.Tasks))
+	copy(tasks, state.Tasks)
 	sort.Slice(tasks, func(i, j int) bool {
 		if tasks[i].SlowUses != tasks[j].SlowUses {
 			return tasks[i].SlowUses > tasks[j].SlowUses
@@ -301,7 +302,7 @@ func compactLegacyEvents(events []legacyEvent) SenseiState {
 		}
 	}
 
-	state := SenseiState{Version: stateVersion}
+	state := SenseiState{Version: stateVersion, Tasks: []Task{}}
 	open := map[string]*Task{}
 	recent := map[string]time.Time{}
 	lastChord := map[string]time.Time{}
