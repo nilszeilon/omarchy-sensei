@@ -55,6 +55,8 @@ The panel shows your lifetime shortcut level above your tasks. Level 1 takes 10 
 
 Sensei stores no action or keypress history. Its private local state contains only the lifetime shortcut total and currently open tasks. Task records contain the action name, current shortcut hints, offender count, and opening time. A sub-second duplicate guard is discarded automatically. Sensei has no telemetry or network client; during normal use, all data stays local.
 
+Sensei is event-driven at idle. The panel watches its compact state file through Quickshell instead of polling or keeping Python resident. When you use an observed shortcut, Omarchy performs the action first and launches the small state update asynchronously, so coaching never sits in the shortcut's critical path.
+
 The catalog refreshes automatically after menu or personal binding changes and after Omarchy updates. Inspect its decisions with:
 
 ```sh
