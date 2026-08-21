@@ -78,7 +78,14 @@ func withLockedState(paths Paths, now time.Time, ensureFile bool, update func(*S
 		migrated = true
 	}
 
-	changed := pruneTransientState(&state, now)
+	changed := false
+	if state.Tasks == nil {
+		state.Tasks = []Task{}
+		changed = exists
+	}
+	if pruneTransientState(&state, now) {
+		changed = true
+	}
 	if update != nil && update(&state) {
 		changed = true
 	}
