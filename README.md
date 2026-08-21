@@ -33,15 +33,15 @@ The goal is simple: fewer open tasks, more shortcuts used, and an Omarchy workfl
 
 ## Install
 
-Requires Omarchy Quattro and Go 1.24+ installed locally. Installation uses only user-level files and services with no elevated privileges. The build is forced offline: it never downloads a Go toolchain or module dependency.
+Requires Omarchy Quattro. Sensei uses the Python 3 runtime included with Omarchy and installs only user-level files and services; it does not download dependencies or require elevated privileges.
 
 ```sh
 omarchy plugin add https://github.com/nilszeilon/omarchy-sensei.git --enable
-cd ~/.config/omarchy/plugins/io.github.nilszeilon.omarchy-sensei
-./install.sh
 ```
 
-The installer builds the local helper, derives a coaching catalog from Omarchy's live menu and Super+K bindings, and connects every confident match. Sensei also uses Omarchy Shell's semantic bar-button registry: workspace clicks retain their workspace number, built-in panels use their direct shortcut, and custom panels use the live `Bar panel N` shortcut. There is no hardcoded panel or action list, and it never edits `/usr/share/omarchy`.
+When the plugin is enabled, its service automatically runs setup from the cloned checkout. It derives a coaching catalog from Omarchy's live menu and Super+K bindings, then connects every confident match. Sensei also uses Omarchy Shell's semantic bar-button registry: workspace clicks retain their workspace number, built-in panels use their direct shortcut, and custom panels use the live `Bar panel N` shortcut. There is no hardcoded panel or action list, and it never edits `/usr/share/omarchy`.
+
+If you need to repair the integration manually, run `./install.sh` from the cloned plugin directory.
 
 Setup installs the helper in `~/.local/bin`, adds clearly marked managed blocks to the user Hyprland and Omarchy menu configurations, and enables a user-level systemd path unit that refreshes shortcut hints after remaps or Omarchy updates. Existing configuration is backed up before a managed block changes.
 
