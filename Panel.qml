@@ -106,6 +106,99 @@ Panel {
           }
         }
 
+        Rectangle {
+          width: parent.width
+          implicitHeight: levelContent.implicitHeight + Style.space(24)
+          radius: Style.cornerRadius
+          color: root.alpha(root.accent, 0.075)
+          border.width: 1
+          border.color: root.alpha(root.accent, 0.22)
+
+          Column {
+            id: levelContent
+            anchors.left: parent.left
+            anchors.right: parent.right
+            anchors.top: parent.top
+            anchors.margins: Style.space(12)
+            spacing: Style.space(8)
+
+            Column {
+              anchors.horizontalCenter: parent.horizontalCenter
+              spacing: 0
+
+              Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: String(stats.level.totalShortcuts || 0)
+                color: root.foreground
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.display
+                font.bold: true
+              }
+
+              Text {
+                anchors.horizontalCenter: parent.horizontalCenter
+                text: "TOTAL SHORTCUTS USED"
+                color: root.foreground
+                opacity: 0.58
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                font.letterSpacing: 0.7
+              }
+            }
+
+            Row {
+              width: parent.width
+              spacing: Style.space(8)
+
+              Text {
+                id: currentLevel
+                text: "LVL " + String(stats.level.level || 1)
+                color: root.accent
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+              }
+
+              PanelSlider {
+                bar: root.bar
+                width: parent.width - currentLevel.implicitWidth - nextLevel.implicitWidth - parent.spacing * 2
+                value: stats.level.progress || 0
+                minimum: 0
+                maximum: 1
+                enabled: false
+                opacity: 1
+                fillColor: root.accent
+                knobColor: root.accent
+                trackColor: root.alpha(root.foreground, 0.14)
+                trackHeight: Math.max(4, Style.space(5))
+                knobSize: Math.max(12, Style.space(12))
+              }
+
+              Text {
+                id: nextLevel
+                text: "LVL " + String(stats.level.nextLevel || 2)
+                color: root.foreground
+                opacity: 0.52
+                font.family: root.fontFamily
+                font.pixelSize: Style.font.caption
+                font.bold: true
+                anchors.verticalCenter: parent.verticalCenter
+              }
+            }
+
+            Text {
+              anchors.horizontalCenter: parent.horizontalCenter
+              text: String(stats.level.shortcutsRemaining || 0) + " shortcuts to level " + String(stats.level.nextLevel || 2)
+              color: root.foreground
+              opacity: 0.58
+              font.family: root.fontFamily
+              font.pixelSize: Style.font.caption
+            }
+          }
+        }
+
         Flickable {
           id: taskScroll
           width: parent.width

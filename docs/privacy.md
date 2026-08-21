@@ -20,6 +20,7 @@ Omarchy Sensei must be useful without becoming a keylogger.
 - The known shortcut associated with that action
 - Timing needed to estimate friction and time saved
 - Aggregate counters and recommendation outcomes
+- A locally derived lifetime shortcut total and level
 
 ## User control
 

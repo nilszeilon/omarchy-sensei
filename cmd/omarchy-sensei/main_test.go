@@ -242,3 +242,62 @@ func TestGroupedClickBindingUsesStableHints(t *testing.T) {
 		t.Fatalf("named panels must remain independent, got %#v", got)
 	}
 }
+
+func TestLevelProgressGrowsRequirementsByFiftyPercent(t *testing.T) {
+	tests := []struct {
+		total, level, current, required, remaining int
+	}{
+		{0, 1, 0, 10, 10},
+		{9, 1, 9, 10, 1},
+		{10, 2, 0, 15, 15},
+		{24, 2, 14, 15, 1},
+		{25, 3, 0, 23, 23},
+		{47, 3, 22, 23, 1},
+		{48, 4, 0, 35, 35},
+		{722, 9, 206, 270, 64},
+	}
+	for _, test := range tests {
+		got := levelProgress(test.total)
+		if got.Level != test.level || got.NextLevel != test.level+1 ||
+			got.ShortcutsInLevel != test.current || got.ShortcutsForLevel != test.required ||
+			got.ShortcutsRemaining != test.remaining {
+			t.Fatalf("levelProgress(%d) = %#v", test.total, got)
+		}
+		wantProgress := float64(test.current) / float64(test.required)
+		if got.Progress != wantProgress {
+			t.Fatalf("levelProgress(%d) progress = %v, want %v", test.total, got.Progress, wantProgress)
+		}
+	}
+}
+
+func TestShortcutTotalDeduplicatesOnePhysicalChord(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	events := []Event{
+		{OccurredAt: now, Action: "focus-next", Trigger: "shortcut", Shortcut: "ALT + TAB"},
+		{OccurredAt: now.Add(20 * time.Millisecond), Action: "reveal-active", Trigger: "shortcut", Shortcut: "ALT + TAB"},
+		{OccurredAt: now.Add(30 * time.Millisecond), Action: "menu", Trigger: "menu", Shortcut: "SUPER + SPACE"},
+		{OccurredAt: now.Add(150 * time.Millisecond), Action: "focus-next", Trigger: "shortcut", Shortcut: "ALT + TAB"},
+		{OccurredAt: now.Add(160 * time.Millisecond), Action: "terminal", Trigger: "shortcut", Shortcut: "SUPER + RETURN"},
+	}
+	if got := countShortcutUses(events); got != 3 {
+		t.Fatalf("expected three physical shortcut uses, got %d", got)
+	}
+}
+
+func TestSnapshotIncludesLifetimeLevel(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	events := make([]Event, 10)
+	for index := range events {
+		events[index] = Event{
+			OccurredAt: now.Add(time.Duration(index) * time.Second),
+			Action:     "terminal",
+			Title:      "Terminal",
+			Trigger:    "shortcut",
+			Shortcut:   "SUPER + RETURN",
+		}
+	}
+	got := buildSnapshot(events, now).Level
+	if got.TotalShortcuts != 10 || got.Level != 2 || got.Progress != 0 {
+		t.Fatalf("expected level two at ten lifetime shortcuts, got %#v", got)
+	}
+}

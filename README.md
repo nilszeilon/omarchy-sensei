@@ -25,6 +25,8 @@ Task hints resolve against the active Hyprland bindings, so user remaps take pre
 
 Equivalent habits share one task: every numbered workspace click contributes to `Workspace switching`, and `Super+Tab` or any numbered workspace shortcut completes it. Panels without a named shortcut contribute to `Bar panels`; any positional bar-panel shortcut completes that shared task. Named panels such as Bluetooth stay independent and require their named shortcut.
 
+The panel also shows a lifetime shortcut level. Level 1 takes 10 shortcut uses; each following level requires 50% more than the previous one, rounded up. The total shortcut count, current level, next level, and progress are derived locally from the existing event history.
+
 The catalog refreshes automatically after menu or personal binding changes and after Omarchy updates. Inspect its decisions with:
 
 ```sh

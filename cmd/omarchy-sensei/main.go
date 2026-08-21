@@ -32,9 +32,20 @@ type Task struct {
 	SlowUses  int       `json:"slowUses"`
 }
 
+type LevelProgress struct {
+	TotalShortcuts     int     `json:"totalShortcuts"`
+	Level              int     `json:"level"`
+	NextLevel          int     `json:"nextLevel"`
+	ShortcutsInLevel   int     `json:"shortcutsInLevel"`
+	ShortcutsForLevel  int     `json:"shortcutsForLevel"`
+	ShortcutsRemaining int     `json:"shortcutsRemaining"`
+	Progress           float64 `json:"progress"`
+}
+
 type Snapshot struct {
-	Tasks  []Task `json:"tasks"`
-	Paused bool   `json:"paused"`
+	Tasks  []Task        `json:"tasks"`
+	Level  LevelProgress `json:"level"`
+	Paused bool          `json:"paused"`
 }
 
 func main() {
@@ -553,7 +564,10 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		}
 	}
 
-	result := Snapshot{Tasks: make([]Task, 0, len(open))}
+	result := Snapshot{
+		Tasks: make([]Task, 0, len(open)),
+		Level: levelProgress(countShortcutUses(ordered)),
+	}
 	for _, task := range open {
 		result.Tasks = append(result.Tasks, *task)
 	}
@@ -564,6 +578,53 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		return result.Tasks[i].OpenedAt.Before(result.Tasks[j].OpenedAt)
 	})
 	return result
+}
+
+func countShortcutUses(events []Event) int {
+	const duplicateWindow = 100 * time.Millisecond
+	lastUse := map[string]time.Time{}
+	total := 0
+	for _, event := range events {
+		if event.Trigger != "shortcut" {
+			continue
+		}
+		key := canonicalShortcut(event.Shortcut)
+		if key == "" {
+			key = event.Action
+		}
+		if previous := lastUse[key]; !previous.IsZero() {
+			elapsed := event.OccurredAt.Sub(previous)
+			if elapsed >= 0 && elapsed < duplicateWindow {
+				continue
+			}
+		}
+		lastUse[key] = event.OccurredAt
+		total++
+	}
+	return total
+}
+
+func levelProgress(total int) LevelProgress {
+	if total < 0 {
+		total = 0
+	}
+	level, levelStart, requirement := 1, 0, 10
+	for total >= levelStart+requirement {
+		levelStart += requirement
+		level++
+		// Integer ceil(requirement * 1.5) keeps every level strictly harder.
+		requirement = (requirement*3 + 1) / 2
+	}
+	current := total - levelStart
+	return LevelProgress{
+		TotalShortcuts:     total,
+		Level:              level,
+		NextLevel:          level + 1,
+		ShortcutsInLevel:   current,
+		ShortcutsForLevel:  requirement,
+		ShortcutsRemaining: requirement - current,
+		Progress:           float64(current) / float64(requirement),
+	}
 }
 
 func normalizeLearningEvent(event Event) Event {
