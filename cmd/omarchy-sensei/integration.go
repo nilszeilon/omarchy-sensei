@@ -95,6 +95,11 @@ func uninstallIntegration(paths Paths) error {
 	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	for _, path := range []string{paths.BindingCache, paths.LocalBinary} {
+		if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+			return err
+		}
+	}
 	return nil
 }
 
