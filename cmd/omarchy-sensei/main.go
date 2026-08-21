@@ -123,6 +123,7 @@ func coachClick(paths Paths, args []string) {
 	if !ok || len(binding.Shortcuts) == 0 {
 		return
 	}
+	binding = groupedClickBinding(bindings, *workspace, binding)
 
 	if err := recordEvent(paths, Event{
 		OccurredAt: time.Now(),
@@ -134,6 +135,21 @@ func coachClick(paths Paths, args []string) {
 	}); err != nil {
 		fatal(err.Error())
 	}
+}
+
+func groupedClickBinding(bindings []Binding, workspace int, binding Binding) Binding {
+	if workspace > 0 {
+		return Binding{Description: "Workspace switching", Shortcuts: []string{"SUPER + TAB"}}
+	}
+	if !isPositionalPanelDescription(binding.Description) {
+		return binding
+	}
+	hint, ok := bindingWithDescription(bindings, "Bar panel 1")
+	if !ok || len(hint.Shortcuts) == 0 {
+		hint = binding
+	}
+	hint.Description = "Bar panels"
+	return hint
 }
 
 func loadBindingCache(path string) ([]Binding, error) {
@@ -489,6 +505,9 @@ func printStatus(paths Paths) {
 func buildSnapshot(events []Event, now time.Time) Snapshot {
 	_ = now
 	ordered := append([]Event(nil), events...)
+	for index := range ordered {
+		ordered[index] = normalizeLearningEvent(ordered[index])
+	}
 	sort.SliceStable(ordered, func(i, j int) bool {
 		return ordered[i].OccurredAt.Before(ordered[j].OccurredAt)
 	})
@@ -497,7 +516,7 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 	knownShortcuts := map[string][]string{}
 	lastShortcutAt := map[string]time.Time{}
 	for _, event := range ordered {
-		if event.Trigger == "shortcut" && event.Shortcut != "" {
+		if event.Trigger == "shortcut" && event.Shortcut != "" && !isGroupedAction(event.Action) {
 			knownShortcuts[event.Action] = mergeShortcuts(knownShortcuts[event.Action], event.Shortcut)
 		}
 	}
@@ -545,6 +564,54 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		return result.Tasks[i].OpenedAt.Before(result.Tasks[j].OpenedAt)
 	})
 	return result
+}
+
+func normalizeLearningEvent(event Event) Event {
+	if isWorkspaceSwitchDescription(event.Title) || strings.HasPrefix(event.Action, "switch-to-workspace-") ||
+		event.Action == "next-workspace" || event.Action == "previous-workspace" || event.Action == "former-workspace" {
+		event.Action = "workspace-switching"
+		event.Title = "Workspace switching"
+		if event.Trigger != "shortcut" {
+			event.Shortcut = "SUPER + TAB"
+			event.Shortcuts = []string{"SUPER + TAB"}
+		}
+		return event
+	}
+	if isPositionalPanelDescription(event.Title) || strings.HasPrefix(event.Action, "bar-panel-") {
+		event.Action = "bar-panels"
+		event.Title = "Bar panels"
+	}
+	return event
+}
+
+func isWorkspaceSwitchDescription(description string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(description))
+	if normalized == "workspace switching" || normalized == "next workspace" ||
+		normalized == "previous workspace" || normalized == "former workspace" {
+		return true
+	}
+	return strings.HasPrefix(normalized, "switch to workspace ")
+}
+
+func isPositionalPanelDescription(description string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(description))
+	if normalized == "bar panels" {
+		return true
+	}
+	value := strings.TrimPrefix(normalized, "bar panel ")
+	if value == normalized || value == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isGroupedAction(action string) bool {
+	return action == "workspace-switching" || action == "bar-panels"
 }
 
 func resolveCurrentShortcuts(title, fallback string) []string {

@@ -45,6 +45,10 @@ func TestInstallHyprIntegrationIsIdempotent(t *testing.T) {
 	if !strings.Contains(string(lua), "dispatcher.__omarchy_dispatcher") {
 		t.Fatalf("generated observer must preserve Super+K source scanning:\n%s", lua)
 	}
+	if !strings.Contains(string(lua), `return "workspace-switching", "Workspace switching"`) ||
+		!strings.Contains(string(lua), `return "bar-panels", "Bar panels"`) {
+		t.Fatalf("generated observer must collapse equivalent workspace and positional panel shortcuts:\n%s", lua)
+	}
 	if luac, err := exec.LookPath("luac"); err == nil {
 		if output, err := exec.Command(luac, "-p", paths.SenseiLua).CombinedOutput(); err != nil {
 			t.Fatalf("generated Lua is invalid: %v\n%s", err, output)

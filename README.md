@@ -23,6 +23,8 @@ The installer builds the local collector, derives a coaching catalog from Omarch
 
 Task hints resolve against the active Hyprland bindings, so user remaps take precedence over Omarchy defaults. Clicks without a keyboard equivalent are ignored.
 
+Equivalent habits share one task: every numbered workspace click contributes to `Workspace switching`, and `Super+Tab` or any numbered workspace shortcut completes it. Panels without a named shortcut contribute to `Bar panels`; any positional bar-panel shortcut completes that shared task. Named panels such as Bluetooth stay independent and require their named shortcut.
+
 The catalog refreshes automatically after menu or personal binding changes and after Omarchy updates. Inspect its decisions with:
 
 ```sh

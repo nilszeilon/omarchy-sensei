@@ -187,6 +187,18 @@ func senseiLua() string {
     return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
   end
 
+  local function coaching_identity(description)
+    local text = tostring(description or "")
+    if text:match("^Switch to workspace %d+$") or text == "Next workspace"
+      or text == "Previous workspace" or text == "Former workspace" then
+      return "workspace-switching", "Workspace switching"
+    end
+    if text:match("^Bar panel %d+$") then
+      return "bar-panels", "Bar panels"
+    end
+    return slug(text), text
+  end
+
   function hl.bind(keys, dispatcher, options)
     local original = _G.omarchy_sensei_original_hl_bind
     local description = options and (options.description or options.desc)
@@ -196,9 +208,9 @@ func senseiLua() string {
       return original(keys, dispatcher, options)
     end
 
-    local action = slug(description)
+    local action, title = coaching_identity(description)
     local command = "omarchy-sensei record --action " .. quote(action)
-      .. " --title " .. quote(description)
+      .. " --title " .. quote(title)
       .. " --trigger shortcut --shortcut " .. quote(key_text)
     return original(keys, function()
       hl.dispatch(dispatcher)

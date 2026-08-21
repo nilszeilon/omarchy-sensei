@@ -9,6 +9,8 @@ The snapshot folds events in chronological order into open tasks:
 - A matching `shortcut` event closes the task.
 - A later slow event reopens it.
 
+The fold also normalizes equivalent habits without rewriting history. Numbered, next, previous, and former workspace actions share the `workspace-switching` identity. Positional `Bar panel N` actions share `bar-panels`. Directly named panels retain their own identity, so a positional panel shortcut cannot accidentally complete a named Bluetooth, Audio, or Network task.
+
 The Quickshell panel renders only these open tasks and refreshes every two seconds. Tasks are ordered by descending slow-use count, with the oldest task first when counts tie. The bounded list follows its keyboard cursor and supports arrows plus `h/j/k/l`. There are no scores, charts, skill trees, trials, notifications, or manually completed checkboxes. The required behavior itself is the completion action.
 
 The integration observes every described Hyprland shortcut through one pass-through dispatcher. It dynamically merges Omarchy's default and user menu definitions, resolves the same bindings as Super+K, and instruments every menu leaf with a unique high-confidence command or semantic match. Ambiguous actions remain untouched and are visible through catalog diagnostics. There is no hardcoded action registry.

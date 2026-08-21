@@ -174,3 +174,71 @@ func TestBindingTargetsModuleRequiresExactSemanticCommand(t *testing.T) {
 		t.Fatal("non-shell commands must not match")
 	}
 }
+
+func TestWorkspaceEventsCollapseIntoOneTask(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	events := []Event{
+		{OccurredAt: now, Action: "switch-to-workspace-2", Title: "Switch to workspace 2", Trigger: "mouse", Shortcut: "SUPER + 2"},
+		{OccurredAt: now.Add(time.Second), Action: "switch-to-workspace-5", Title: "Switch to workspace 5", Trigger: "mouse", Shortcut: "SUPER + 5"},
+	}
+	tasks := buildSnapshot(events, now).Tasks
+	if len(tasks) != 1 || tasks[0].Action != "workspace-switching" || tasks[0].Title != "Workspace switching" || tasks[0].SlowUses != 2 {
+		t.Fatalf("expected one collapsed workspace task, got %#v", tasks)
+	}
+	if len(tasks[0].Shortcuts) != 1 || tasks[0].Shortcut != "SUPER + TAB" {
+		t.Fatalf("expected the generic workspace hint, got %#v", tasks[0])
+	}
+}
+
+func TestAnyWorkspaceShortcutClosesCollapsedTask(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	for _, shortcutEvent := range []Event{
+		{OccurredAt: now.Add(time.Second), Action: "next-workspace", Title: "Next workspace", Trigger: "shortcut", Shortcut: "SUPER + TAB"},
+		{OccurredAt: now.Add(time.Second), Action: "switch-to-workspace-8", Title: "Switch to workspace 8", Trigger: "shortcut", Shortcut: "SUPER + 8"},
+	} {
+		events := []Event{
+			{OccurredAt: now, Action: "switch-to-workspace-3", Title: "Switch to workspace 3", Trigger: "mouse", Shortcut: "SUPER + 3"},
+			shortcutEvent,
+		}
+		if tasks := buildSnapshot(events, now).Tasks; len(tasks) != 0 {
+			t.Fatalf("expected %q to close workspace group, got %#v", shortcutEvent.Title, tasks)
+		}
+	}
+}
+
+func TestPositionalPanelTasksCollapseButNamedPanelStaysIndependent(t *testing.T) {
+	now := time.Date(2026, 8, 21, 12, 0, 0, 0, time.Local)
+	events := []Event{
+		{OccurredAt: now, Action: "bar-panel-2", Title: "Bar panel 2", Trigger: "mouse", Shortcut: "SUPER CTRL + 2"},
+		{OccurredAt: now.Add(time.Second), Action: "bar-panel-3", Title: "Bar panel 3", Trigger: "mouse", Shortcut: "SUPER CTRL + 3"},
+		{OccurredAt: now.Add(2 * time.Second), Action: "bluetooth", Title: "Bluetooth", Trigger: "mouse", Shortcut: "SUPER CTRL + B"},
+		{OccurredAt: now.Add(3 * time.Second), Action: "bar-panel-1", Title: "Bar panel 1", Trigger: "shortcut", Shortcut: "SUPER CTRL + 1"},
+	}
+	tasks := buildSnapshot(events, now).Tasks
+	if len(tasks) != 1 || tasks[0].Action != "bluetooth" {
+		t.Fatalf("expected generic panel key to leave named Bluetooth open, got %#v", tasks)
+	}
+	events = append(events, Event{OccurredAt: now.Add(4 * time.Second), Action: "bluetooth", Title: "Bluetooth", Trigger: "shortcut", Shortcut: "SUPER CTRL + B"})
+	if tasks := buildSnapshot(events, now).Tasks; len(tasks) != 0 {
+		t.Fatalf("expected named Bluetooth shortcut to close its task, got %#v", tasks)
+	}
+}
+
+func TestGroupedClickBindingUsesStableHints(t *testing.T) {
+	bindings := []Binding{
+		{Description: "Bar panel 1", Shortcuts: []string{"SUPER CTRL + 1"}},
+		{Description: "Bar panel 3", Shortcuts: []string{"SUPER CTRL + 3"}},
+	}
+	workspace := groupedClickBinding(bindings, 4, Binding{Description: "Switch to workspace 4", Shortcuts: []string{"SUPER + 4"}})
+	if workspace.Description != "Workspace switching" || len(workspace.Shortcuts) != 1 || workspace.Shortcuts[0] != "SUPER + TAB" {
+		t.Fatalf("expected generic workspace binding, got %#v", workspace)
+	}
+	panel := groupedClickBinding(bindings, 0, bindings[1])
+	if panel.Description != "Bar panels" || len(panel.Shortcuts) != 1 || panel.Shortcuts[0] != "SUPER CTRL + 1" {
+		t.Fatalf("expected first positional panel binding, got %#v", panel)
+	}
+	named := Binding{Description: "Bluetooth", Shortcuts: []string{"SUPER CTRL + B"}}
+	if got := groupedClickBinding(bindings, 0, named); got.Description != "Bluetooth" {
+		t.Fatalf("named panels must remain independent, got %#v", got)
+	}
+}
