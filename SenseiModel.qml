@@ -6,6 +6,15 @@ Item {
   visible: false
 
   property var tasks: []
+  property var level: ({
+    totalShortcuts: 0,
+    level: 1,
+    nextLevel: 2,
+    shortcutsInLevel: 0,
+    shortcutsForLevel: 10,
+    shortcutsRemaining: 10,
+    progress: 0
+  })
   property bool paused: false
   property string error: ""
 
@@ -17,6 +26,7 @@ Item {
     try {
       var parsed = JSON.parse(String(output || "{}"))
       tasks = parsed.tasks || []
+      level = parsed.level || level
       paused = parsed.paused === true
       error = ""
     } catch (e) {

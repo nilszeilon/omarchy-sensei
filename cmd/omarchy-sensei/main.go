@@ -32,14 +32,25 @@ type Task struct {
 	SlowUses  int       `json:"slowUses"`
 }
 
+type LevelProgress struct {
+	TotalShortcuts     int     `json:"totalShortcuts"`
+	Level              int     `json:"level"`
+	NextLevel          int     `json:"nextLevel"`
+	ShortcutsInLevel   int     `json:"shortcutsInLevel"`
+	ShortcutsForLevel  int     `json:"shortcutsForLevel"`
+	ShortcutsRemaining int     `json:"shortcutsRemaining"`
+	Progress           float64 `json:"progress"`
+}
+
 type Snapshot struct {
-	Tasks  []Task `json:"tasks"`
-	Paused bool   `json:"paused"`
+	Tasks  []Task        `json:"tasks"`
+	Level  LevelProgress `json:"level"`
+	Paused bool          `json:"paused"`
 }
 
 func main() {
 	if len(os.Args) < 2 {
-		fatal("usage: omarchy-sensei <setup|refresh|catalog|doctor|uninstall|record|run|snapshot|pause|resume|clear|status>")
+		fatal("usage: omarchy-sensei <setup|refresh|catalog|doctor|uninstall|record|coach-click|run|snapshot|pause|resume|clear|status>")
 	}
 
 	paths, err := senseiPaths()
@@ -70,6 +81,8 @@ func main() {
 		fmt.Println("Omarchy Sensei observation was removed. Your activity data was kept.")
 	case "record":
 		record(paths, os.Args[2:])
+	case "coach-click":
+		coachClick(paths, os.Args[2:])
 	case "run":
 		run(paths, os.Args[2:])
 	case "snapshot":
@@ -93,6 +106,128 @@ func main() {
 	}
 }
 
+func coachClick(paths Paths, args []string) {
+	flags := flag.NewFlagSet("coach-click", flag.ExitOnError)
+	module := flags.String("module", "", "Omarchy bar module that received the click")
+	workspace := flags.Int("workspace", 0, "semantic workspace number, when clicked")
+	region := flags.String("region", "", "bar region containing the module")
+	panelIndex := flags.Int("panel-index", 0, "one-based keyboard panel index")
+	_ = flags.Parse(args)
+
+	moduleID := strings.TrimSpace(*module)
+	if moduleID == "" {
+		fatal("coach-click requires --module")
+	}
+
+	bindings, err := loadBindingCache(paths.BindingCache)
+	if err != nil {
+		// A click must never be delayed or broken by stale diagnostics. The
+		// setup/refresh watcher rebuilds this tiny semantic cache after remaps.
+		return
+	}
+	binding, ok := resolveClickBinding(bindings, ClickContext{
+		Module:     moduleID,
+		Workspace:  *workspace,
+		Region:     strings.TrimSpace(*region),
+		PanelIndex: *panelIndex,
+	})
+	if !ok || len(binding.Shortcuts) == 0 {
+		return
+	}
+	binding = groupedClickBinding(bindings, *workspace, binding)
+
+	if err := recordEvent(paths, Event{
+		OccurredAt: time.Now(),
+		Action:     actionID(binding.Description),
+		Title:      binding.Description,
+		Trigger:    "mouse",
+		Shortcut:   binding.Shortcuts[0],
+		Shortcuts:  binding.Shortcuts,
+	}); err != nil {
+		fatal(err.Error())
+	}
+}
+
+func groupedClickBinding(bindings []Binding, workspace int, binding Binding) Binding {
+	if workspace > 0 {
+		return Binding{Description: "Workspace switching", Shortcuts: []string{"SUPER + TAB"}}
+	}
+	if !isPositionalPanelDescription(binding.Description) {
+		return binding
+	}
+	hint, ok := bindingWithDescription(bindings, "Bar panel 1")
+	if !ok || len(hint.Shortcuts) == 0 {
+		hint = binding
+	}
+	hint.Description = "Bar panels"
+	return hint
+}
+
+func loadBindingCache(path string) ([]Binding, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, err
+	}
+	var bindings []Binding
+	if err := json.Unmarshal(data, &bindings); err != nil {
+		return nil, err
+	}
+	return bindings, nil
+}
+
+type ClickContext struct {
+	Module     string
+	Workspace  int
+	Region     string
+	PanelIndex int
+}
+
+func resolveClickBinding(bindings []Binding, click ClickContext) (Binding, bool) {
+	if click.Workspace > 0 && strings.Contains(strings.ToLower(click.Module), "workspace") {
+		return bindingWithDescription(bindings, fmt.Sprintf("Switch to workspace %d", click.Workspace))
+	}
+
+	for _, binding := range bindings {
+		if bindingTargetsModule(binding, click.Module) {
+			return binding, true
+		}
+	}
+
+	if strings.EqualFold(click.Region, "right") && click.PanelIndex > 0 {
+		return bindingWithDescription(bindings, fmt.Sprintf("Bar panel %d", click.PanelIndex))
+	}
+	return Binding{}, false
+}
+
+func bindingWithDescription(bindings []Binding, description string) (Binding, bool) {
+	for _, binding := range bindings {
+		if strings.EqualFold(strings.TrimSpace(binding.Description), description) {
+			return binding, true
+		}
+	}
+	return Binding{}, false
+}
+
+func bindingTargetsModule(binding Binding, module string) bool {
+	if !strings.EqualFold(binding.Dispatcher, "exec") || module == "" {
+		return false
+	}
+	fields := strings.Fields(binding.Argument)
+	foundShell, foundAction, foundModule := false, false, false
+	for _, field := range fields {
+		field = strings.Trim(field, "'\"")
+		switch {
+		case strings.HasSuffix(field, "omarchy-shell"):
+			foundShell = true
+		case field == "toggle" || field == "summon" || field == "open" || field == "show":
+			foundAction = true
+		case field == module:
+			foundModule = true
+		}
+	}
+	return foundShell && foundAction && foundModule
+}
+
 func doctor(paths Paths) {
 	catalog, err := loadCatalog(paths)
 	if err != nil {
@@ -111,6 +246,10 @@ func doctor(paths Paths) {
 	observer, err := os.ReadFile(paths.SenseiLua)
 	if err != nil || !strings.Contains(string(observer), "hl.dispatch(dispatcher)") {
 		fatal("generic shortcut observer is not installed")
+	}
+	bindings, err := loadBindingCache(paths.BindingCache)
+	if err != nil || len(bindings) == 0 {
+		fatal("semantic click binding cache is not installed")
 	}
 	if output, err := exec.Command("systemctl", "--user", "is-active", "omarchy-sensei-refresh.path").CombinedOutput(); err != nil || strings.TrimSpace(string(output)) != "active" {
 		fatal("catalog refresh watcher is not active")
@@ -216,6 +355,7 @@ type Paths struct {
 	Home           string
 	StateDir       string
 	Events         string
+	BindingCache   string
 	Paused         string
 	HyprlandConfig string
 	SenseiLua      string
@@ -241,6 +381,7 @@ func senseiPaths() (Paths, error) {
 		Home:           home,
 		StateDir:       stateDir,
 		Events:         filepath.Join(stateDir, "events.jsonl"),
+		BindingCache:   filepath.Join(stateDir, "bindings.json"),
 		Paused:         filepath.Join(stateDir, "paused"),
 		HyprlandConfig: filepath.Join(home, ".config", "hypr", "hyprland.lua"),
 		SenseiLua:      filepath.Join(home, ".config", "hypr", "sensei.lua"),
@@ -375,6 +516,9 @@ func printStatus(paths Paths) {
 func buildSnapshot(events []Event, now time.Time) Snapshot {
 	_ = now
 	ordered := append([]Event(nil), events...)
+	for index := range ordered {
+		ordered[index] = normalizeLearningEvent(ordered[index])
+	}
 	sort.SliceStable(ordered, func(i, j int) bool {
 		return ordered[i].OccurredAt.Before(ordered[j].OccurredAt)
 	})
@@ -383,7 +527,7 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 	knownShortcuts := map[string][]string{}
 	lastShortcutAt := map[string]time.Time{}
 	for _, event := range ordered {
-		if event.Trigger == "shortcut" && event.Shortcut != "" {
+		if event.Trigger == "shortcut" && event.Shortcut != "" && !isGroupedAction(event.Action) {
 			knownShortcuts[event.Action] = mergeShortcuts(knownShortcuts[event.Action], event.Shortcut)
 		}
 	}
@@ -420,7 +564,10 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		}
 	}
 
-	result := Snapshot{Tasks: make([]Task, 0, len(open))}
+	result := Snapshot{
+		Tasks: make([]Task, 0, len(open)),
+		Level: levelProgress(countShortcutUses(ordered)),
+	}
 	for _, task := range open {
 		result.Tasks = append(result.Tasks, *task)
 	}
@@ -431,6 +578,101 @@ func buildSnapshot(events []Event, now time.Time) Snapshot {
 		return result.Tasks[i].OpenedAt.Before(result.Tasks[j].OpenedAt)
 	})
 	return result
+}
+
+func countShortcutUses(events []Event) int {
+	const duplicateWindow = 100 * time.Millisecond
+	lastUse := map[string]time.Time{}
+	total := 0
+	for _, event := range events {
+		if event.Trigger != "shortcut" {
+			continue
+		}
+		key := canonicalShortcut(event.Shortcut)
+		if key == "" {
+			key = event.Action
+		}
+		if previous := lastUse[key]; !previous.IsZero() {
+			elapsed := event.OccurredAt.Sub(previous)
+			if elapsed >= 0 && elapsed < duplicateWindow {
+				continue
+			}
+		}
+		lastUse[key] = event.OccurredAt
+		total++
+	}
+	return total
+}
+
+func levelProgress(total int) LevelProgress {
+	if total < 0 {
+		total = 0
+	}
+	level, levelStart, requirement := 1, 0, 10
+	for total >= levelStart+requirement {
+		levelStart += requirement
+		level++
+		// Integer ceil(requirement * 1.5) keeps every level strictly harder.
+		requirement = (requirement*3 + 1) / 2
+	}
+	current := total - levelStart
+	return LevelProgress{
+		TotalShortcuts:     total,
+		Level:              level,
+		NextLevel:          level + 1,
+		ShortcutsInLevel:   current,
+		ShortcutsForLevel:  requirement,
+		ShortcutsRemaining: requirement - current,
+		Progress:           float64(current) / float64(requirement),
+	}
+}
+
+func normalizeLearningEvent(event Event) Event {
+	if isWorkspaceSwitchDescription(event.Title) || strings.HasPrefix(event.Action, "switch-to-workspace-") ||
+		event.Action == "next-workspace" || event.Action == "previous-workspace" || event.Action == "former-workspace" {
+		event.Action = "workspace-switching"
+		event.Title = "Workspace switching"
+		if event.Trigger != "shortcut" {
+			event.Shortcut = "SUPER + TAB"
+			event.Shortcuts = []string{"SUPER + TAB"}
+		}
+		return event
+	}
+	if isPositionalPanelDescription(event.Title) || strings.HasPrefix(event.Action, "bar-panel-") {
+		event.Action = "bar-panels"
+		event.Title = "Bar panels"
+	}
+	return event
+}
+
+func isWorkspaceSwitchDescription(description string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(description))
+	if normalized == "workspace switching" || normalized == "next workspace" ||
+		normalized == "previous workspace" || normalized == "former workspace" {
+		return true
+	}
+	return strings.HasPrefix(normalized, "switch to workspace ")
+}
+
+func isPositionalPanelDescription(description string) bool {
+	normalized := strings.ToLower(strings.TrimSpace(description))
+	if normalized == "bar panels" {
+		return true
+	}
+	value := strings.TrimPrefix(normalized, "bar panel ")
+	if value == normalized || value == "" {
+		return false
+	}
+	for _, char := range value {
+		if char < '0' || char > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func isGroupedAction(action string) bool {
+	return action == "workspace-switching" || action == "bar-panels"
 }
 
 func resolveCurrentShortcuts(title, fallback string) []string {

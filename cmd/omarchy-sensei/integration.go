@@ -31,6 +31,9 @@ func setupIntegration(paths Paths) error {
 	if err := installMenuIntegration(paths, catalog); err != nil {
 		return fmt.Errorf("install menu integration: %w", err)
 	}
+	if err := installBindingCache(paths, catalog); err != nil {
+		return fmt.Errorf("install click binding cache: %w", err)
+	}
 	if err := installRefreshWatcher(paths); err != nil {
 		return fmt.Errorf("install catalog refresh watcher: %w", err)
 	}
@@ -45,7 +48,37 @@ func refreshIntegration(paths Paths) (Catalog, error) {
 	if err := installMenuIntegration(paths, catalog); err != nil {
 		return Catalog{}, err
 	}
+	if err := installBindingCache(paths, catalog); err != nil {
+		return Catalog{}, err
+	}
 	return catalog, nil
+}
+
+func installBindingCache(paths Paths, catalog Catalog) error {
+	bindings := make([]Binding, 0, len(catalog.Matches)+len(catalog.UnmatchedBindings))
+	seen := map[string]bool{}
+	for _, match := range catalog.Matches {
+		key := normalizedPhrase(match.Binding.Description)
+		if !seen[key] {
+			bindings = append(bindings, match.Binding)
+			seen[key] = true
+		}
+	}
+	for _, binding := range catalog.UnmatchedBindings {
+		key := normalizedPhrase(binding.Description)
+		if !seen[key] {
+			bindings = append(bindings, binding)
+			seen[key] = true
+		}
+	}
+	data, err := json.Marshal(bindings)
+	if err != nil {
+		return err
+	}
+	if err := os.MkdirAll(filepath.Dir(paths.BindingCache), 0o700); err != nil {
+		return err
+	}
+	return writeAtomic(paths.BindingCache, append(data, '\n'), 0o600)
 }
 
 func uninstallIntegration(paths Paths) error {
@@ -154,6 +187,18 @@ func senseiLua() string {
     return "'" .. tostring(value):gsub("'", "'\\''") .. "'"
   end
 
+  local function coaching_identity(description)
+    local text = tostring(description or "")
+    if text:match("^Switch to workspace %d+$") or text == "Next workspace"
+      or text == "Previous workspace" or text == "Former workspace" then
+      return "workspace-switching", "Workspace switching"
+    end
+    if text:match("^Bar panel %d+$") then
+      return "bar-panels", "Bar panels"
+    end
+    return slug(text), text
+  end
+
   function hl.bind(keys, dispatcher, options)
     local original = _G.omarchy_sensei_original_hl_bind
     local description = options and (options.description or options.desc)
@@ -163,9 +208,9 @@ func senseiLua() string {
       return original(keys, dispatcher, options)
     end
 
-    local action = slug(description)
+    local action, title = coaching_identity(description)
     local command = "omarchy-sensei record --action " .. quote(action)
-      .. " --title " .. quote(description)
+      .. " --title " .. quote(title)
       .. " --trigger shortcut --shortcut " .. quote(key_text)
     return original(keys, function()
       hl.dispatch(dispatcher)

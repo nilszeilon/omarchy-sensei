@@ -45,6 +45,10 @@ func TestInstallHyprIntegrationIsIdempotent(t *testing.T) {
 	if !strings.Contains(string(lua), "dispatcher.__omarchy_dispatcher") {
 		t.Fatalf("generated observer must preserve Super+K source scanning:\n%s", lua)
 	}
+	if !strings.Contains(string(lua), `return "workspace-switching", "Workspace switching"`) ||
+		!strings.Contains(string(lua), `return "bar-panels", "Bar panels"`) {
+		t.Fatalf("generated observer must collapse equivalent workspace and positional panel shortcuts:\n%s", lua)
+	}
 	if luac, err := exec.LookPath("luac"); err == nil {
 		if output, err := exec.Command(luac, "-p", paths.SenseiLua).CombinedOutput(); err != nil {
 			t.Fatalf("generated Lua is invalid: %v\n%s", err, output)
@@ -111,5 +115,27 @@ func TestPausePreventsRecording(t *testing.T) {
 	}
 	if _, err := os.Stat(paths.Events); !os.IsNotExist(err) {
 		t.Fatalf("paused recorder wrote an event")
+	}
+}
+
+func TestInstallBindingCacheIncludesEveryBindingOnce(t *testing.T) {
+	dir := t.TempDir()
+	paths := Paths{BindingCache: filepath.Join(dir, "bindings.json")}
+	catalog := Catalog{
+		Matches: []CatalogMatch{
+			{Binding: Binding{Description: "Bluetooth", Shortcuts: []string{"SUPER CTRL + B"}}},
+			{Binding: Binding{Description: "Bluetooth", Shortcuts: []string{"SUPER CTRL + B"}}},
+		},
+		UnmatchedBindings: []Binding{{Description: "Bar panel 2", Shortcuts: []string{"SUPER CTRL + 2"}}},
+	}
+	if err := installBindingCache(paths, catalog); err != nil {
+		t.Fatal(err)
+	}
+	bindings, err := loadBindingCache(paths.BindingCache)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(bindings) != 2 || bindings[0].Description != "Bluetooth" || bindings[1].Description != "Bar panel 2" {
+		t.Fatalf("expected deduplicated matched and unmatched bindings, got %#v", bindings)
 	}
 }
