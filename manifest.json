@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "id": "io.github.nilszeilon.omarchy-sensei",
   "name": "Omarchy Sensei",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "author": "Nils Zeilon",
   "license": "MIT",
   "description": "Turn mouse habits into keyboard-first Omarchy tasks.",

@@ -12,7 +12,7 @@ Whether you are new to Omarchy or already fly through most of it from the keyboa
 
 Sensei has one simple loop:
 
-1. Click a workspace, a keyboard-accessible bar panel, or an Omarchy menu action with a confidently matching shortcut.
+1. Use the mouse to switch windows, click a workspace or bar panel, choose a shortcut-backed menu route, or launch a shortcut-backed app from Omarchy's Apps menu.
 2. Sensei creates a practice task and shows every matching shortcut from Omarchy's Super+K panel.
 3. Use one of those shortcuts the next time.
 4. The task completes automatically.
@@ -39,13 +39,13 @@ Requires Omarchy Quattro. Sensei uses the Python 3 runtime included with Omarchy
 omarchy plugin add https://github.com/nilszeilon/omarchy-sensei.git --enable
 ```
 
-When the plugin is enabled, its service automatically runs setup from the cloned checkout. It derives a coaching catalog from Omarchy's live menu and Super+K bindings, then connects every confident match. Sensei also uses Omarchy Shell's semantic bar-button registry: workspace clicks retain their workspace number, built-in panels use their direct shortcut, and custom panels use the live `Bar panel N` shortcut. There is no hardcoded panel or action list, and it never edits `/usr/share/omarchy`.
+When the plugin is enabled, its service automatically runs setup from the cloned checkout. It snapshots Omarchy's live Super+K bindings, collapses duplicate commands into semantic tasks, and connects safe desktop event sources to those identities. Menu shortcuts resolve through Omarchy's own route IDs and aliases. Apps-menu launches resolve through desktop IDs, executable commands, URLs, and configured default roles. Bar clicks resolve through Omarchy Shell's widget metadata. Window-focus clicks resolve from the compositor's before/after window geometry. Ambiguous candidates are ignored instead of guessed, and no action-specific list is required. Sensei never edits `/usr/share/omarchy`.
 
 If you need to repair the integration manually, run `./install.sh` from the cloned plugin directory.
 
 Setup installs the helper in `~/.local/bin`, adds clearly marked managed blocks to the user Hyprland and Omarchy menu configurations, and enables a user-level systemd path unit that refreshes shortcut hints after remaps or Omarchy updates. Existing configuration is backed up before a managed block changes.
 
-Task hints resolve against the active Hyprland bindings, so user remaps take precedence over Omarchy defaults. Clicks without a keyboard equivalent are ignored.
+Task hints resolve against the active Hyprland bindings, so user remaps take precedence over Omarchy defaults and every current alternative is shown. Clicks without one unique keyboard equivalent are ignored.
 
 Equivalent habits share one task: every numbered workspace click contributes to `Workspace switching`, and `Super+Tab` or any numbered workspace shortcut completes it. Panels without a named shortcut contribute to `Bar panels`; any positional bar-panel shortcut completes that shared task. Named panels such as Bluetooth stay independent and require their named shortcut.
 
@@ -55,7 +55,7 @@ The panel shows your lifetime shortcut level above your tasks. Level 1 takes 10 
 
 Sensei stores no action or keypress history. Its private local state contains only the lifetime shortcut total and currently open tasks. Task records contain the action name, current shortcut hints, offender count, and opening time. A sub-second duplicate guard is discarded automatically. Sensei has no telemetry or network client; during normal use, all data stays local.
 
-Sensei is event-driven at idle. The panel watches its compact state file through Quickshell instead of polling or keeping Python resident. When you use an observed shortcut, Omarchy performs the action first and launches the small state update asynchronously, so coaching never sits in the shortcut's critical path.
+Sensei is event-driven at idle. The panel watches its compact state file through Quickshell instead of polling or keeping Python resident. When you use an observed shortcut, Omarchy performs the action first and launches the small state update asynchronously, so coaching never sits in the shortcut's critical path. The compositor focus observer is mouse-only and non-consuming; ordinary clicks launch no process, and only a real focus transition followed by the matching click release emits an event.
 
 The catalog refreshes automatically after menu or personal binding changes and after Omarchy updates. Inspect its decisions with:
 
@@ -63,8 +63,12 @@ The catalog refreshes automatically after menu or personal binding changes and a
 omarchy-sensei catalog
 omarchy-sensei catalog --unmatched
 omarchy-sensei catalog --json
+omarchy-sensei catalog --coverage
+omarchy-sensei catalog --coverage --json
 omarchy-sensei doctor
 ```
+
+Coverage distinguishes actions Sensei can currently observe from actions whose shortcut identity is understood but whose UI does not yet expose a safe slow-path event. On the release snapshot, all 218 bindings are accounted for as 191 semantic concepts; only five lack dispatcher metadata.
 
 ## Controls
 

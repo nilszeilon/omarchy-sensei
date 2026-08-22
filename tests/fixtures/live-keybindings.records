@@ -1,0 +1,229 @@
+SUPER + K                           → Keybindings	exec	omarchy-menu-keybindings
+SUPER + SPACE                       → Omarchy menu	exec	omarchy-menu toggle
+SUPER + RETURN                      → Terminal	exec	omarchy-launch-terminal
+SUPER SHIFT + RETURN                → Browser	exec	omarchy-launch-browser
+SUPER SHIFT + F                     → File manager	exec	omarchy-launch-nautilus
+SUPER + ESCAPE                      → System menu	exec	omarchy-menu toggle system
+SUPER SHIFT CTRL + SPACE            → Theme menu	exec	omarchy-menu toggle theme
+SUPER + F                           → Full screen	lua	hl.dsp.window.fullscreen({ mode = "fullscreen" })
+SUPER ALT + F                       → Full width	lua	hl.dsp.window.fullscreen({ mode = "maximized" })
+SUPER + W                           → Close window	lua	hl.dsp.window.close()
+CTRL ALT + DELETE                   → Close all windows	exec	omarchy-hyprland-window-close-all
+SUPER CTRL + L                      → Lock system	exec	omarchy-system-lock
+SUPER + T                           → Toggle window floating/tiling	lua	hl.dsp.window.float({ action = "toggle" })
+SUPER + J                           → Toggle window split	lua	hl.dsp.layout("togglesplit")
+SUPER + O                           → Pop window out (float & pin)	exec	omarchy-hyprland-window-pop
+SUPER + C                           → Universal copy		
+SUPER + V                           → Universal paste		
+SUPER + X                           → Universal cut		
+SUPER CTRL + V                      → Clipboard manager	exec	omarchy-shell shell toggle omarchy.clipboard
+SUPER CTRL + E                      → Emojis	exec	omarchy-shell shell toggle omarchy.emojis
+SUPER + PRINT                       → Color picker	exec	pkill hyprpicker || hyprpicker -a
+SUPER ALT + P                       → Color picker	exec	pkill hyprpicker || hyprpicker -a
+PRINT                               → Screenshot	exec	omarchy-capture-screenshot
+SUPER + P                           → Screenshot	exec	omarchy-capture-screenshot
+ALT + PRINT                         → Screenrecording	exec	omarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord
+SUPER ALT + RETURN                  → Tmux	exec	omarchy-launch-terminal-tmux
+SUPER CTRL + RETURN                 → Herdr	exec	omarchy-launch-terminal-herdr
+SUPER SHIFT + B                     → Browser	exec	omarchy-launch-browser
+SUPER SHIFT ALT + B                 → Browser (private)	exec	omarchy-launch-browser --private
+SUPER SHIFT ALT + F                 → File manager (cwd)	exec	omarchy-launch-nautilus-cwd
+SUPER + 0                           → Switch to workspace 10	lua	hl.dsp.focus({ workspace = "10" })
+SUPER + 1                           → Switch to workspace 1	lua	hl.dsp.focus({ workspace = "1" })
+SUPER + 2                           → Switch to workspace 2	lua	hl.dsp.focus({ workspace = "2" })
+SUPER + 3                           → Switch to workspace 3	lua	hl.dsp.focus({ workspace = "3" })
+SUPER + 4                           → Switch to workspace 4	lua	hl.dsp.focus({ workspace = "4" })
+SUPER + 5                           → Switch to workspace 5	lua	hl.dsp.focus({ workspace = "5" })
+SUPER + 6                           → Switch to workspace 6	lua	hl.dsp.focus({ workspace = "6" })
+SUPER + 7                           → Switch to workspace 7	lua	hl.dsp.focus({ workspace = "7" })
+SUPER + 8                           → Switch to workspace 8	lua	hl.dsp.focus({ workspace = "8" })
+SUPER + 9                           → Switch to workspace 9	lua	hl.dsp.focus({ workspace = "9" })
+SUPER + TAB                         → Next workspace	lua	hl.dsp.focus({ workspace = "e+1" })
+SUPER CTRL + TAB                    → Former workspace	lua	hl.dsp.focus({ workspace = "previous" })
+SUPER SHIFT + TAB                   → Previous workspace	lua	hl.dsp.focus({ workspace = "e-1" })
+SUPER SHIFT + 0                     → Move window to workspace 10	lua	hl.dsp.window.move({ workspace = "10" })
+SUPER SHIFT + 1                     → Move window to workspace 1	lua	hl.dsp.window.move({ workspace = "1" })
+SUPER SHIFT + 2                     → Move window to workspace 2	lua	hl.dsp.window.move({ workspace = "2" })
+SUPER SHIFT + 3                     → Move window to workspace 3	lua	hl.dsp.window.move({ workspace = "3" })
+SUPER SHIFT + 4                     → Move window to workspace 4	lua	hl.dsp.window.move({ workspace = "4" })
+SUPER SHIFT + 5                     → Move window to workspace 5	lua	hl.dsp.window.move({ workspace = "5" })
+SUPER SHIFT + 6                     → Move window to workspace 6	lua	hl.dsp.window.move({ workspace = "6" })
+SUPER SHIFT + 7                     → Move window to workspace 7	lua	hl.dsp.window.move({ workspace = "7" })
+SUPER SHIFT + 8                     → Move window to workspace 8	lua	hl.dsp.window.move({ workspace = "8" })
+SUPER SHIFT + 9                     → Move window to workspace 9	lua	hl.dsp.window.move({ workspace = "9" })
+SUPER SHIFT ALT + 0                 → Move window silently to workspace 10	lua	hl.dsp.window.move({ follow = false, workspace = "10" })
+SUPER SHIFT ALT + 1                 → Move window silently to workspace 1	lua	hl.dsp.window.move({ follow = false, workspace = "1" })
+SUPER SHIFT ALT + 2                 → Move window silently to workspace 2	lua	hl.dsp.window.move({ follow = false, workspace = "2" })
+SUPER SHIFT ALT + 3                 → Move window silently to workspace 3	lua	hl.dsp.window.move({ follow = false, workspace = "3" })
+SUPER SHIFT ALT + 4                 → Move window silently to workspace 4	lua	hl.dsp.window.move({ follow = false, workspace = "4" })
+SUPER SHIFT ALT + 5                 → Move window silently to workspace 5	lua	hl.dsp.window.move({ follow = false, workspace = "5" })
+SUPER SHIFT ALT + 6                 → Move window silently to workspace 6	lua	hl.dsp.window.move({ follow = false, workspace = "6" })
+SUPER SHIFT ALT + 7                 → Move window silently to workspace 7	lua	hl.dsp.window.move({ follow = false, workspace = "7" })
+SUPER SHIFT ALT + 8                 → Move window silently to workspace 8	lua	hl.dsp.window.move({ follow = false, workspace = "8" })
+SUPER SHIFT ALT + 9                 → Move window silently to workspace 9	lua	hl.dsp.window.move({ follow = false, workspace = "9" })
+SUPER SHIFT + DOWN                  → Swap window down	lua	hl.dsp.window.swap({ direction = "d" })
+SUPER SHIFT + LEFT                  → Swap window to the left	lua	hl.dsp.window.swap({ direction = "l" })
+SUPER SHIFT + RIGHT                 → Swap window to the right	lua	hl.dsp.window.swap({ direction = "r" })
+SUPER SHIFT + UP                    → Swap window up	lua	hl.dsp.window.swap({ direction = "u" })
+ALT + TAB                           → Focus on next window	lua	hl.dsp.window.cycle_next()
+CTRL ALT + TAB                      → Focus on next monitor	lua	hl.dsp.focus({ monitor = "+1" })
+SHIFT ALT + TAB                     → Focus on previous window	lua	hl.dsp.window.cycle_next({ next = false })
+SHIFT CTRL ALT + TAB                → Focus on previous monitor	lua	hl.dsp.focus({ monitor = "-1" })
+SUPER + DOWN                        → Focus on below window	lua	hl.dsp.focus({ direction = "d" })
+SUPER + LEFT                        → Focus on left window	lua	hl.dsp.focus({ direction = "l" })
+SUPER + RIGHT                       → Focus on right window	lua	hl.dsp.focus({ direction = "r" })
+SUPER + UP                          → Focus on above window	lua	hl.dsp.focus({ direction = "u" })
+SUPER + LEFT MOUSE BUTTON           → Move window	lua	hl.dsp.window.drag()
+SUPER + RIGHT MOUSE BUTTON          → Resize window	lua	hl.dsp.window.resize()
+SUPER + MINUS                       → Expand window left	lua	hl.dsp.window.resize({ relative = true, x = -100, y = 0 })
+SUPER ALT + MINUS                   → Expand window left a little	lua	hl.dsp.window.resize({ relative = true, x = -25, y = 0 })
+SUPER CTRL + MINUS                  → Expand window left a lot	lua	hl.dsp.window.resize({ relative = true, x = -300, y = 0 })
+SUPER SHIFT + EQUAL                 → Expand window down	lua	hl.dsp.window.resize({ relative = true, x = 0, y = 100 })
+SUPER SHIFT ALT + EQUAL             → Expand window down a little	lua	hl.dsp.window.resize({ relative = true, x = 0, y = 25 })
+SUPER SHIFT CTRL + EQUAL            → Expand window down a lot	lua	hl.dsp.window.resize({ relative = true, x = 0, y = 300 })
+SUPER + EQUAL                       → Shrink window left	lua	hl.dsp.window.resize({ relative = true, x = 100, y = 0 })
+SUPER ALT + EQUAL                   → Shrink window left a little	lua	hl.dsp.window.resize({ relative = true, x = 25, y = 0 })
+SUPER CTRL + EQUAL                  → Shrink window left a lot	lua	hl.dsp.window.resize({ relative = true, x = 300, y = 0 })
+SUPER SHIFT + MINUS                 → Shrink window up	lua	hl.dsp.window.resize({ relative = true, x = 0, y = -100 })
+SUPER SHIFT ALT + MINUS             → Shrink window up a little	lua	hl.dsp.window.resize({ relative = true, x = 0, y = -25 })
+SUPER SHIFT CTRL + MINUS            → Shrink window up a lot	lua	hl.dsp.window.resize({ relative = true, x = 0, y = -300 })
+SUPER + S                           → Toggle scratchpad	lua	hl.dsp.workspace.toggle_special("scratchpad")
+SUPER ALT + S                       → Move window to scratchpad	lua	hl.dsp.window.move({ follow = false, workspace = "special:scratchpad" })
+SUPER + COMMA                       → Dismiss last notification	exec	omarchy-shell notifications dismissOne
+SUPER ALT + COMMA                   → Invoke last notification	exec	omarchy-shell notifications invokeLast
+SUPER CTRL + COMMA                  → Toggle silencing notifications	exec	omarchy-toggle-notification-silencing
+SUPER SHIFT + COMMA                 → Dismiss all notifications	exec	omarchy-shell notifications dismissAll
+SUPER SHIFT ALT + COMMA             → Open notification history	exec	omarchy-shell notifications showHistory
+SUPER + BACKSPACE                   → Toggle window transparency	exec	omarchy-hyprland-window-transparency-toggle
+SUPER CTRL + N                      → Toggle nightlight	exec	omarchy-toggle-nightlight
+SUPER CTRL + I                      → Toggle locking on idle	exec	omarchy-toggle-idle
+F9                                  → Start dictation (push-to-talk)	exec	voxtype record start
+F9                                  → Stop dictation (push-to-talk)	exec	voxtype record stop
+SHIFT ALT + D                       → Download Video from Web App	sendshortcut	SHIFT ALT,D,
+SHIFT ALT + L                       → Copy URL from Web App	sendshortcut	SHIFT ALT,L,
+SUPER + Home                        → Restore window width	exec	omarchy-hyprland-window-width restore
+SUPER + L                           → Toggle workspace layout	exec	omarchy-hyprland-workspace-layout-toggle
+SUPER + SLASH                       → Monitor scaling up	exec	omarchy-hyprland-monitor-scaling up
+SUPER ALT + BRACKETLEFT             → Make webcam overlay smaller	exec	omarchy-capture-webcam-resize smaller
+SUPER ALT + BRACKETRIGHT            → Make webcam overlay larger	exec	omarchy-capture-webcam-resize larger
+SUPER ALT + Home                    → Save window width	exec	omarchy-hyprland-window-width save
+SUPER ALT + SLASH                   → Monitor scaling down	exec	omarchy-hyprland-monitor-scaling down
+SUPER ALT + SPACE                   → Apps menu	exec	omarchy-menu toggle apps
+SUPER CTRL + 1                      → Bar panel 1	exec	omarchy-shell -q shell togglePanelAt right 1
+SUPER CTRL + 2                      → Bar panel 2	exec	omarchy-shell -q shell togglePanelAt right 2
+SUPER CTRL + 3                      → Bar panel 3	exec	omarchy-shell -q shell togglePanelAt right 3
+SUPER CTRL + 4                      → Bar panel 4	exec	omarchy-shell -q shell togglePanelAt right 4
+SUPER CTRL + 5                      → Bar panel 5	exec	omarchy-shell -q shell togglePanelAt right 5
+SUPER CTRL + 6                      → Bar panel 6	exec	omarchy-shell -q shell togglePanelAt right 6
+SUPER CTRL + 7                      → Bar panel 7	exec	omarchy-shell -q shell togglePanelAt right 7
+SUPER CTRL + 8                      → Bar panel 8	exec	omarchy-shell -q shell togglePanelAt right 8
+SUPER CTRL + 9                      → Bar panel 9	exec	omarchy-shell -q shell togglePanelAt right 9
+SUPER CTRL + A                      → Audio	exec	omarchy-shell shell toggle omarchy.audio
+SUPER CTRL + B                      → Bluetooth	exec	omarchy-shell shell toggle omarchy.bluetooth
+SUPER CTRL + BACKSPACE              → Toggle single-window square aspect	exec	omarchy-hyprland-window-single-square-aspect-toggle
+SUPER CTRL + C                      → Capture menu	exec	omarchy-menu toggle capture
+SUPER CTRL + D                      → Display	exec	omarchy-shell shell toggle omarchy.monitor
+SUPER CTRL + Delete                 → Toggle laptop display	exec	omarchy-hyprland-monitor-internal toggle
+SUPER CTRL + F                      → Tiled full screen	exec	omarchy-hyprland-window-tiled-fullscreen-toggle
+SUPER CTRL + H                      → Hardware menu	exec	omarchy-menu toggle hardware
+SUPER CTRL + O                      → Toggle menu	exec	omarchy-menu toggle toggle
+SUPER CTRL + P                      → Power	exec	omarchy-shell shell toggle omarchy.power
+SUPER CTRL + PERIOD                 → Transcode	exec	omarchy-transcode
+SUPER CTRL + PRINT                  → Extract text (OCR) from screenshot	exec	omarchy-capture-text
+SUPER CTRL + Q                      → Calculator	exec	omacalc
+SUPER CTRL + R                      → Set reminder	exec	omarchy-menu toggle reminder-set
+SUPER CTRL + S                      → Share	exec	omarchy-menu toggle share
+SUPER CTRL + SPACE                  → Background switcher	exec	omarchy-menu toggle background
+SUPER CTRL + T                      → Activity	exec	omarchy-launch-tui 'btop'
+SUPER CTRL + W                      → Network	exec	omarchy-shell shell toggle omarchy.network
+SUPER CTRL + X                      → Toggle dictation	exec	voxtype record toggle
+SUPER CTRL + Z                      → Zoom in		
+SUPER CTRL ALT + B                  → Show battery remaining	exec	omarchy-notification-battery
+SUPER CTRL ALT + D                  → Calendar	exec	omarchy-shell shell toggle omarchy.clock
+SUPER CTRL ALT + Delete             → Toggle laptop display mirroring	exec	omarchy-hyprland-monitor-internal-mirror toggle
+SUPER CTRL ALT + R                  → Show reminders	exec	omarchy-reminder show
+SUPER CTRL ALT + T                  → Show time	exec	omarchy-notification-time
+SUPER CTRL ALT + W                  → Toggle weather	exec	omarchy-notification-weather
+SUPER CTRL ALT + Z                  → Reset zoom		
+SUPER SHIFT + A                     → ChatGPT	exec	omarchy-launch-webapp 'https://chatgpt.com'
+SUPER SHIFT + BACKSPACE             → Toggle window gaps	exec	omarchy-hyprland-window-gaps-toggle
+SUPER SHIFT + C                     → Calendar	exec	omarchy-launch-webapp 'https://app.hey.com/calendar/weeks/'
+SUPER SHIFT + D                     → Docker	exec	omarchy-launch-tui 'lazydocker'
+SUPER SHIFT + E                     → Email	exec	omarchy-launch-webapp 'https://app.hey.com'
+SUPER SHIFT + G                     → Signal	exec	omarchy-launch-signal
+SUPER SHIFT + M                     → Music	exec	omarchy-launch-spotify
+SUPER SHIFT + N                     → Editor	exec	omarchy-launch-editor
+SUPER SHIFT + O                     → Obsidian	exec	omarchy-launch-or-focus '^obsidian$' 'uwsm-app -- obsidian'
+SUPER SHIFT + P                     → Google Photos	exec	omarchy-launch-or-focus-webapp 'Google Photos' 'https://photos.google.com/'
+SUPER SHIFT + R                     → Screen recording	exec	omarchy-capture-screenrecording --stop-recording || omarchy-menu toggle trigger.capture.screenrecord
+SUPER SHIFT + S                     → Google Maps	exec	omarchy-launch-or-focus-webapp 'Google Maps' 'https://maps.google.com/'
+SUPER SHIFT + SLASH                 → Passwords	exec	omarchy-launch-1password
+SUPER SHIFT + SPACE                 → Toggle top bar	exec	omarchy-toggle-bar
+SUPER SHIFT + W                     → Omawrite	exec	uwsm-app -- omawrite
+SUPER SHIFT + X                     → X	exec	omarchy-launch-webapp 'https://x.com/'
+SUPER SHIFT + Y                     → YouTube	exec	omarchy-launch-webapp 'https://youtube.com/'
+SUPER SHIFT ALT + A                 → Grok	exec	omarchy-launch-webapp 'https://grok.com'
+SUPER SHIFT ALT + DOWN              → Move workspace to down monitor	lua	hl.dsp.workspace.move({ monitor = "d" })
+SUPER SHIFT ALT + E                 → New email	exec	omarchy-launch-webapp 'https://app.hey.com/messages/new?display=standalone&new_window=true'
+SUPER SHIFT ALT + G                 → WhatsApp	exec	omarchy-launch-or-focus-webapp 'WhatsApp' 'https://web.whatsapp.com/'
+SUPER SHIFT ALT + LEFT              → Move workspace to left monitor	lua	hl.dsp.workspace.move({ monitor = "l" })
+SUPER SHIFT ALT + M                 → Music TUI	exec	omarchy-launch-or-focus-tui 'cliamp'
+SUPER SHIFT ALT + RIGHT             → Move workspace to right monitor	lua	hl.dsp.workspace.move({ monitor = "r" })
+SUPER SHIFT ALT + UP                → Move workspace to up monitor	lua	hl.dsp.workspace.move({ monitor = "u" })
+SUPER SHIFT ALT + X                 → X Post	exec	omarchy-launch-webapp 'https://x.com/compose/post'
+SUPER SHIFT CTRL + A                → Agent	exec	omarchy-agent --pick
+SUPER SHIFT CTRL + G                → Google Messages	exec	omarchy-launch-or-focus-webapp 'Google Messages' 'https://messages.google.com/web/conversations'
+SUPER SHIFT CTRL + R                → Clear reminders	exec	omarchy-reminder clear
+SUPER + G                           → Toggle window grouping	lua	hl.dsp.group.toggle()
+SUPER ALT + 1                       → Switch to group window 1	lua	hl.dsp.group.active({ index = 1 })
+SUPER ALT + 2                       → Switch to group window 2	lua	hl.dsp.group.active({ index = 2 })
+SUPER ALT + 3                       → Switch to group window 3	lua	hl.dsp.group.active({ index = 3 })
+SUPER ALT + 4                       → Switch to group window 4	lua	hl.dsp.group.active({ index = 4 })
+SUPER ALT + 5                       → Switch to group window 5	lua	hl.dsp.group.active({ index = 5 })
+SUPER ALT + DOWN                    → Move window to group on bottom	lua	hl.dsp.window.move({ into_group = "d" })
+SUPER ALT + G                       → Move active window out of group	lua	hl.dsp.window.move({ out_of_group = true })
+SUPER ALT + LEFT                    → Move window to group on left	lua	hl.dsp.window.move({ into_group = "l" })
+SUPER ALT + RIGHT                   → Move window to group on right	lua	hl.dsp.window.move({ into_group = "r" })
+SUPER ALT + TAB                     → Next window in group	lua	hl.dsp.group.next()
+SUPER ALT + UP                      → Move window to group on top	lua	hl.dsp.window.move({ into_group = "u" })
+SUPER ALT + mouse_down              → Next window in group	lua	hl.dsp.group.next()
+SUPER ALT + mouse_up                → Previous window in group	lua	hl.dsp.group.prev()
+SUPER CTRL + LEFT                   → Move grouped window focus left	lua	hl.dsp.group.prev()
+SUPER CTRL + RIGHT                  → Move grouped window focus right	lua	hl.dsp.group.next()
+SUPER SHIFT ALT + TAB               → Previous window in group	lua	hl.dsp.group.prev()
+SUPER + mouse_down                  → Scroll active workspace forward	lua	hl.dsp.focus({ workspace = "e+1" })
+SUPER + mouse_up                    → Scroll active workspace backward	lua	hl.dsp.focus({ workspace = "e-1" })
+ALT + TAB                           → Reveal active window on top	lua	hl.dsp.window.bring_to_top()
+SHIFT ALT + TAB                     → Reveal active window on top	lua	hl.dsp.window.bring_to_top()
+ALT + XF86AudioLowerVolume          → Volume down precise	exec	omarchy-audio-output-volume -1
+ALT + XF86AudioPlay                 → Next track	exec	omarchy-shell media next
+ALT + XF86AudioRaiseVolume          → Volume up precise	exec	omarchy-audio-output-volume +1
+ALT + XF86MonBrightnessDown         → Brightness down precise	exec	omarchy-brightness-display 1%-
+ALT + XF86MonBrightnessUp           → Brightness up precise	exec	omarchy-brightness-display +1%
+SHIFT + XF86AudioMute               → Switch audio output	exec	omarchy-audio-output-switch
+SHIFT + XF86AudioPause              → Switch media source	exec	omarchy-audio-source-switch
+SHIFT + XF86AudioPlay               → Switch media source	exec	omarchy-audio-source-switch
+SHIFT + XF86MonBrightnessDown       → Brightness minimum	exec	omarchy-brightness-display 1%
+SHIFT + XF86MonBrightnessUp         → Brightness maximum	exec	omarchy-brightness-display 100%
+SHIFT ALT + XF86AudioPlay           → Previous track	exec	omarchy-shell media previous
+XF86AudioLowerVolume                → Volume down	exec	omarchy-audio-output-volume lower
+XF86AudioMicMute                    → Mute microphone	exec	omarchy-audio-input-mute
+XF86AudioMute                       → Mute	exec	omarchy-audio-output-volume mute-toggle
+XF86AudioNext                       → Next track	exec	omarchy-shell media next
+XF86AudioPause                      → Pause	exec	omarchy-shell media playPause
+XF86AudioPlay                       → Play	exec	omarchy-shell media playPause
+XF86AudioPrev                       → Previous track	exec	omarchy-shell media previous
+XF86AudioRaiseVolume                → Volume up	exec	omarchy-audio-output-volume raise
+XF86Calculator                      → Calculator	exec	omacalc
+XF86Eject                           → Eject media	exec	eject
+XF86KbdBrightnessDown               → Keyboard brightness down	exec	omarchy-brightness-keyboard down
+XF86KbdBrightnessUp                 → Keyboard brightness up	exec	omarchy-brightness-keyboard up
+XF86KbdLightOnOff                   → Keyboard backlight cycle	exec	omarchy-brightness-keyboard cycle
+XF86MonBrightnessDown               → Brightness down	exec	omarchy-brightness-display 5%-
+XF86MonBrightnessUp                 → Brightness up	exec	omarchy-brightness-display +5%
+XF86PowerOff                        → Power menu	exec	omarchy-menu toggle system
+XF86TouchpadOff                     → Disable touchpad	exec	omarchy-toggle-touchpad off
+XF86TouchpadOn                      → Enable touchpad	exec	omarchy-toggle-touchpad on
+XF86TouchpadToggle                  → Toggle touchpad	exec	omarchy-toggle-touchpad
+SUPER ALT + K                       → Tmux keybindings	exec	omarchy-menu-tmux-keybindings
+SUPER CTRL + K                      → Herdr keybindings	exec	omarchy-menu-herdr-keybindings

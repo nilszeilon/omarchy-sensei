@@ -81,6 +81,13 @@ BarWidget {
     return 0
   }
 
+  function moduleTitle(moduleId) {
+    if (!root.bar || !root.bar.barWidgetRegistry ||
+        typeof root.bar.barWidgetRegistry.metadataFor !== "function") return ""
+    var metadata = root.bar.barWidgetRegistry.metadataFor(String(moduleId || ""))
+    return metadata ? String(metadata.displayName || "") : ""
+  }
+
   function observeBarClick(target, buttonCode) {
     if (buttonCode !== Qt.LeftButton || !root.observerLeader) return
     var slot = root.slotForTarget(target)
@@ -88,6 +95,7 @@ BarWidget {
 
     var command = "omarchy-sensei coach-click --module " + Util.shellQuote(String(slot.moduleName))
       + " --region " + Util.shellQuote(String(slot.region || ""))
+      + " --module-title " + Util.shellQuote(root.moduleTitle(slot.moduleName))
     var workspace = root.workspaceForTarget(target, slot.moduleName)
     var panelIndex = root.panelIndexForSlot(slot)
     if (workspace > 0) command += " --workspace " + workspace

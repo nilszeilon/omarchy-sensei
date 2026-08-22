@@ -9,19 +9,23 @@ but the plugin can also run it directly from its git checkout.
 from __future__ import annotations
 
 import argparse
+import configparser
 import dataclasses
 import datetime as dt
 import errno
 import fcntl
+import hashlib
 import json
 import os
 import re
+import shlex
 import shutil
 import stat
 import subprocess
 import sys
 import tempfile
 import time
+import urllib.parse
 from pathlib import Path
 from typing import Any, Callable, Iterable
 
@@ -35,6 +39,20 @@ MENU_START = "// BEGIN OMARCHY SENSEI (managed by omarchy-sensei setup)"
 MENU_END = "// END OMARCHY SENSEI"
 WORDS_PATTERN = re.compile(r"[A-Za-z0-9]+")
 TRAILING_COMMA = re.compile(r",(\s*[}\]])")
+SEMANTIC_OPERATION_CLASSES = {
+    "add": "install",
+    "delete": "remove",
+    "disable": "disable",
+    "edit": "edit",
+    "enable": "enable",
+    "install": "install",
+    "remove": "remove",
+    "reset": "reset",
+    "restore": "reset",
+    "setup": "setup",
+    "uninstall": "remove",
+    "update": "update",
+}
 
 
 def now_utc() -> dt.datetime:
@@ -439,7 +457,14 @@ def normalize_observation(observation: Observation) -> Observation:
 
 def is_workspace_description(description: str) -> bool:
     value = description.strip().lower()
-    return value in {"workspace switching", "next workspace", "previous workspace", "former workspace"} or value.startswith("switch to workspace ")
+    return value in {
+        "workspace switching",
+        "next workspace",
+        "previous workspace",
+        "former workspace",
+        "scroll active workspace forward",
+        "scroll active workspace backward",
+    } or value.startswith("switch to workspace ")
 
 
 def is_panel_description(description: str) -> bool:
@@ -505,6 +530,8 @@ class Binding:
     shortcuts: list[str]
     dispatcher: str = ""
     argument: str = ""
+    concept_action: str = ""
+    concept_title: str = ""
 
     def to_json(self) -> dict[str, Any]:
         value: dict[str, Any] = {"description": self.description, "shortcuts": self.shortcuts}
@@ -512,7 +539,222 @@ class Binding:
             value["dispatcher"] = self.dispatcher
         if self.argument:
             value["argument"] = self.argument
+        if self.concept_action:
+            value["conceptAction"] = self.concept_action
+        if self.concept_title:
+            value["conceptTitle"] = self.concept_title
         return value
+
+
+@dataclasses.dataclass
+class DesktopEntry:
+    desktop_id: str
+    name: str
+    generic_name: str
+    keywords: list[str]
+    command: str
+
+
+def desktop_entry_paths() -> list[Path]:
+    home = Path.home()
+    data_home = Path(os.environ.get("XDG_DATA_HOME", home / ".local" / "share"))
+    data_dirs = [Path(value) for value in os.environ.get("XDG_DATA_DIRS", "/usr/local/share:/usr/share").split(":") if value]
+    return [data_home / "applications", *(path / "applications" for path in data_dirs)]
+
+
+def load_desktop_entries() -> list[DesktopEntry]:
+    entries: dict[str, DesktopEntry] = {}
+    for directory in desktop_entry_paths():
+        try:
+            files = sorted(directory.glob("*.desktop"))
+        except OSError:
+            continue
+        for path in files:
+            desktop_id = path.stem
+            if desktop_id in entries:
+                continue
+            parser = configparser.ConfigParser(interpolation=None, strict=False)
+            parser.optionxform = str
+            try:
+                parser.read(path, encoding="utf-8")
+                value = parser["Desktop Entry"]
+            except (OSError, KeyError, configparser.Error):
+                continue
+            if value.get("Hidden", "false").casefold() == "true" or value.get("NoDisplay", "false").casefold() == "true":
+                continue
+            name = value.get("Name", "").strip()
+            command = value.get("Exec", "").strip()
+            if not name or not command:
+                continue
+            keywords = [item.strip() for item in value.get("Keywords", "").split(";") if item.strip()]
+            entries[desktop_id] = DesktopEntry(
+                desktop_id,
+                name,
+                value.get("GenericName", "").strip(),
+                keywords,
+                command,
+            )
+    return list(entries.values())
+
+
+def normalized_url(value: str) -> str:
+    try:
+        parsed = urllib.parse.urlsplit(value.strip("'\""))
+    except ValueError:
+        return ""
+    if parsed.scheme not in {"http", "https"} or not parsed.netloc:
+        return ""
+    path = parsed.path.rstrip("/") or "/"
+    return urllib.parse.urlunsplit((parsed.scheme.casefold(), parsed.netloc.casefold(), path, parsed.query, ""))
+
+
+def command_urls(command: str) -> set[str]:
+    result: set[str] = set()
+    for value in re.findall(r"https?://[^\s'\"]+", command):
+        normalized = normalized_url(value)
+        if normalized:
+            result.add(normalized)
+    return result
+
+
+COMMAND_ATOM_STOPWORDS = {
+    "app", "bash", "command", "exec", "focus", "gtk-launch", "launch",
+    "omarchy", "or", "setsid", "shell", "systemd-run", "terminal", "tui",
+    "uwsm-app", "webapp", "xdg-terminal-exec",
+}
+
+
+def command_atoms(command: str) -> set[str]:
+    try:
+        fields = shlex.split(command)
+    except ValueError:
+        fields = command.split()
+    result: set[str] = set()
+    for field in fields:
+        if field.startswith("-") or field.startswith("%") or "://" in field or "=" in field:
+            continue
+        value = Path(field).name.casefold()
+        if value.endswith(".desktop"):
+            value = value[:-8]
+        for atom in re.findall(r"[a-z0-9][a-z0-9.+]*", value.replace("_", "-")):
+            if len(atom) >= 3 and atom not in COMMAND_ATOM_STOPWORDS:
+                result.add(atom)
+    return result
+
+
+def binding_role(binding: Binding) -> str:
+    if binding.dispatcher.casefold() != "exec":
+        return ""
+    try:
+        fields = shlex.split(binding.argument)
+    except ValueError:
+        return ""
+    if not fields:
+        return ""
+    head = Path(fields[0]).name.casefold()
+    for role in ("browser", "editor", "terminal"):
+        if head == f"omarchy-launch-{role}":
+            return role
+        if fields[:3] == ["omarchy", "launch", role]:
+            return role
+    return ""
+
+
+def default_desktop_roles() -> dict[str, str]:
+    roles: dict[str, str] = {}
+    for role in ("browser", "editor", "terminal"):
+        command = shutil.which(f"omarchy-default-{role}")
+        if not command:
+            continue
+        try:
+            value = subprocess.run([command], capture_output=True, text=True, timeout=2).stdout.strip()
+        except (OSError, subprocess.SubprocessError):
+            continue
+        if value:
+            roles[role] = Path(value).name.casefold().removesuffix(".desktop")
+    return roles
+
+
+def desktop_entry_roles(entry: DesktopEntry, defaults: dict[str, str]) -> set[str]:
+    identities = {entry.desktop_id.casefold(), literal_phrase(entry.name), *command_atoms(entry.command)}
+    return {role for role, value in defaults.items() if value in identities}
+
+
+def binding_is_app_launch(binding: Binding) -> bool:
+    if binding.dispatcher.casefold() != "exec":
+        return False
+    try:
+        fields = shlex.split(binding.argument)
+    except ValueError:
+        return False
+    if not fields:
+        return False
+    head = Path(fields[0]).name.casefold()
+    return head.startswith("omarchy-launch-") or head in {"omarchy-agent", "omacalc", "uwsm-app"} or fields[:2] == ["omarchy", "launch"]
+
+
+APP_VARIANT_WORDS = {"cwd", "new", "post", "private"}
+
+
+def app_variant_words(*values: str) -> set[str]:
+    words = set().union(*(set(WORDS_PATTERN.findall(value.casefold())) for value in values))
+    return words & APP_VARIANT_WORDS
+
+
+def app_binding_score(entry: DesktopEntry, binding: Binding, defaults: dict[str, str]) -> tuple[int, str]:
+    if not binding_is_app_launch(binding):
+        return 0, ""
+    binding_variants = app_variant_words(binding.description, binding.argument)
+    entry_variants = app_variant_words(entry.name, entry.generic_name, entry.command)
+    if not binding_variants.issubset(entry_variants):
+        return 0, ""
+    urls = command_urls(entry.command) & command_urls(binding.argument)
+    if urls:
+        return 500, f"identical URL {sorted(urls)[0]!r}"
+    role = binding_role(binding)
+    if role and role in desktop_entry_roles(entry, defaults):
+        return 450, f"current default {role}"
+    atoms = command_atoms(entry.command) & command_atoms(binding.argument)
+    if atoms:
+        return 400, f"unique executable {sorted(atoms)[0]!r}"
+    binding_name = literal_phrase(binding.description)
+    if binding_name == literal_phrase(entry.name):
+        return 350, f"exact app name {entry.name!r}"
+    if entry.generic_name and binding_name == literal_phrase(entry.generic_name):
+        return 300, f"exact generic name {entry.generic_name!r}"
+    if binding_name and binding_name in {literal_phrase(value) for value in entry.keywords}:
+        return 250, f"exact desktop keyword {binding.description!r}"
+    return 0, ""
+
+
+def resolve_app_binding(bindings: list[Binding], name: str, desktop_id: str = "") -> tuple[Binding | None, str]:
+    selected = []
+    wanted_name = literal_phrase(name)
+    wanted_id = desktop_id.casefold().removesuffix(".desktop")
+    for entry in load_desktop_entries():
+        if wanted_id and entry.desktop_id.casefold() == wanted_id:
+            selected.append(entry)
+        elif not wanted_id and literal_phrase(entry.name) == wanted_name:
+            selected.append(entry)
+    if not selected:
+        return None, "no installed desktop entry"
+    defaults = default_desktop_roles()
+    candidates: list[tuple[int, str, Binding]] = []
+    for entry in selected:
+        for binding in bindings:
+            score, evidence = app_binding_score(entry, binding, defaults)
+            if score:
+                candidates.append((score, evidence, binding))
+    if not candidates:
+        return None, "no binding identity"
+    best = max(score for score, _, _ in candidates)
+    winners: dict[str, tuple[Binding, str]] = {}
+    for score, evidence, binding in candidates:
+        if score == best:
+            winners[binding_action(binding)] = (binding, evidence)
+    if len(winners) != 1:
+        return None, "ambiguous binding identity"
+    return next(iter(winners.values()))
 
 
 @dataclasses.dataclass
@@ -520,9 +762,13 @@ class CatalogMatch:
     menu: MenuItem
     binding: Binding
     confidence: str
+    evidence: str = ""
 
     def to_json(self) -> dict[str, Any]:
-        return {"menu": self.menu.to_json(), "binding": self.binding.to_json(), "confidence": self.confidence}
+        value = {"menu": self.menu.to_json(), "binding": self.binding.to_json(), "confidence": self.confidence}
+        if self.evidence:
+            value["evidence"] = self.evidence
+        return value
 
 
 @dataclasses.dataclass
@@ -530,16 +776,29 @@ class Catalog:
     matches: list[CatalogMatch]
     unmatched_menu: list[MenuItem]
     unmatched_bindings: list[Binding]
+    binding_source: str = "live"
+    binding_generated_at: str = ""
 
     def to_json(self) -> dict[str, Any]:
-        return {
+        value = {
             "matches": [item.to_json() for item in self.matches],
             "unmatchedMenu": [item.to_json() for item in self.unmatched_menu],
             "unmatchedBindings": [item.to_json() for item in self.unmatched_bindings],
         }
+        value["bindingSource"] = self.binding_source
+        if self.binding_generated_at:
+            value["bindingGeneratedAt"] = self.binding_generated_at
+        return value
 
 
-def parse_menu_jsonc(data: str) -> list[MenuItem]:
+@dataclasses.dataclass
+class BindingRecords:
+    data: str
+    source: str
+    generated_at: str = ""
+
+
+def parse_menu_jsonc_all(data: str) -> list[MenuItem]:
     kept = "\n".join(line for line in data.splitlines() if not line.strip().startswith("//"))
     clean = TRAILING_COMMA.sub(r"\1", kept)
     if not clean.strip():
@@ -554,7 +813,11 @@ def parse_menu_jsonc(data: str) -> list[MenuItem]:
             parent = value["parent"]
         label = value.get("label") or item_id
         result.append(MenuItem(item_id, parent, value.get("icon", ""), value.get("iconFont", ""), label, value.get("title", ""), value.get("description", ""), value.get("action", ""), decode_aliases(value.get("aliases")), value.get("when", ""), value.get("checked", "")))
-    return [item for item in result if item.action]
+    return result
+
+
+def parse_menu_jsonc(data: str) -> list[MenuItem]:
+    return [item for item in parse_menu_jsonc_all(data) if item.action]
 
 
 def decode_aliases(value: Any) -> list[str]:
@@ -565,23 +828,54 @@ def decode_aliases(value: Any) -> list[str]:
     return []
 
 
-def load_merged_menu(paths: Paths) -> list[MenuItem]:
-    defaults = parse_menu_jsonc(paths.default_menu.read_text())
+def load_merged_menu(paths: Paths, actions_only: bool = True) -> list[MenuItem]:
+    defaults = parse_menu_jsonc_all(paths.default_menu.read_text())
     try:
         user_text = paths.menu_extension.read_text()
     except FileNotFoundError:
         user_text = ""
-    user = parse_menu_jsonc(strip_managed_block(user_text, MENU_START, MENU_END)) if user_text else []
+    user = parse_menu_jsonc_all(strip_managed_block(user_text, MENU_START, MENU_END)) if user_text else []
     merged: dict[str, MenuItem] = {}
     order: list[str] = []
     for item in defaults + user:
         if item.id not in merged:
             order.append(item.id)
         merged[item.id] = item
-    return [merged[item_id] for item_id in order if merged[item_id].action]
+    result = [merged[item_id] for item_id in order]
+    return [item for item in result if item.action] if actions_only else result
 
 
-def resolved_keybinding_records() -> str:
+def binding_record_count(data: str) -> int:
+    return sum(1 for line in data.splitlines() if "→" in line)
+
+
+def latest_cached_binding_records() -> BindingRecords | None:
+    home = Path.home()
+    cache_root = Path(os.environ.get("XDG_CACHE_HOME", home / ".cache")) / "omarchy"
+    candidates: list[Path] = []
+    try:
+        candidates = sorted(
+            cache_root.glob("keybindings-*.records"),
+            key=lambda path: path.stat().st_mtime,
+            reverse=True,
+        )
+    except OSError:
+        return None
+    for candidate in candidates:
+        try:
+            data = candidate.read_text()
+            modified = dt.datetime.fromtimestamp(candidate.stat().st_mtime, dt.timezone.utc)
+        except OSError:
+            continue
+        # Omarchy always appends two static web-app records. A file containing
+        # only those records is the fallout of an unavailable compositor, not
+        # a useful binding snapshot.
+        if binding_record_count(data) > 2 and "\t" in data:
+            return BindingRecords(data, f"cache:{candidate}", iso_time(modified))
+    return None
+
+
+def resolved_keybinding_snapshot() -> BindingRecords:
     path = shutil.which("omarchy-menu-keybindings")
     if not path:
         raise FileNotFoundError("omarchy-menu-keybindings")
@@ -590,15 +884,22 @@ def resolved_keybinding_records() -> str:
     index = script.rfind(marker)
     if index < 0:
         process = subprocess.run([path, "--print"], capture_output=True, text=True, check=True)
-        return process.stdout
+        return BindingRecords(process.stdout, "print")
     source = script[:index] + "\noutput_binding_records_uncached\n"
     process = subprocess.run(["bash"], input=source, capture_output=True, text=True)
-    if process.returncode == 0 and process.stdout.strip():
-        return process.stdout
+    if process.returncode == 0 and binding_record_count(process.stdout) > 2:
+        return BindingRecords(process.stdout, "live", iso_time(now_utc()))
+    cached = latest_cached_binding_records()
+    if cached is not None:
+        return cached
     # During shell startup or a reload the compositor may be unavailable.
     # Fall back to Omarchy's cache-backed normal command in that case.
     process = subprocess.run([path, "--print"], capture_output=True, text=True, check=True)
-    return process.stdout
+    return BindingRecords(process.stdout, "print")
+
+
+def resolved_keybinding_records() -> str:
+    return resolved_keybinding_snapshot().data
 
 
 def bindings_from_records(data: str) -> list[Binding]:
@@ -626,50 +927,192 @@ def bindings_from_records(data: str) -> list[Binding]:
 
 
 def load_catalog(paths: Paths) -> Catalog:
-    menu = load_merged_menu(paths)
-    bindings = bindings_from_records(resolved_keybinding_records())
-    matches: list[CatalogMatch] = []
-    unmatched_menu: list[MenuItem] = []
-    matched_bindings: set[str] = set()
-    for item in menu:
-        binding, confidence = match_menu_item(item, bindings)
-        if binding is None:
-            unmatched_menu.append(item)
-        else:
-            matches.append(CatalogMatch(item, binding, confidence))
-            matched_bindings.add(normalized_phrase(binding.description))
+    menu_all = load_merged_menu(paths, actions_only=False)
+    menu = [item for item in menu_all if item.action]
+    snapshot = resolved_keybinding_snapshot()
+    bindings = annotate_binding_concepts(bindings_from_records(snapshot.data), menu_all)
+    matches, unmatched_menu = match_catalog(menu, bindings)
+    matched_bindings = {normalized_phrase(match.binding.description) for match in matches}
     unmatched_bindings = [binding for binding in bindings if normalized_phrase(binding.description) not in matched_bindings]
-    return Catalog(matches, unmatched_menu, unmatched_bindings)
+    return Catalog(matches, unmatched_menu, unmatched_bindings, snapshot.source, snapshot.generated_at)
 
 
-def match_menu_item(item: MenuItem, bindings: list[Binding]) -> tuple[Binding | None, str]:
+def match_catalog(menu: list[MenuItem], bindings: list[Binding]) -> tuple[list[CatalogMatch], list[MenuItem]]:
+    route_owners = identity_owners(menu, menu_routes)
+    phrase_owners = identity_owners(menu, menu_phrases)
+    token_owners = identity_owners(menu, lambda item: [token_identity(tokens) for tokens in strong_semantic_token_sets(item)])
+    matches: list[CatalogMatch] = []
+    unmatched: list[MenuItem] = []
+    for item in menu:
+        binding, confidence, evidence = match_menu_item(
+            item,
+            bindings,
+            route_owners,
+            phrase_owners,
+            token_owners,
+        )
+        if binding is None:
+            unmatched.append(item)
+        else:
+            matches.append(CatalogMatch(item, binding, confidence, evidence))
+    return matches, unmatched
+
+
+def identity_owners(
+    menu: list[MenuItem],
+    identities: Callable[[MenuItem], Iterable[str]],
+) -> dict[str, set[str]]:
+    owners: dict[str, set[str]] = {}
+    for item in menu:
+        for identity in identities(item):
+            if identity:
+                owners.setdefault(identity, set()).add(item.id)
+    return owners
+
+
+def menu_routes(item: MenuItem) -> list[str]:
+    return unique_strings([item.id, *item.aliases], normalize_route)
+
+
+def menu_phrases(item: MenuItem) -> list[str]:
+    return unique_strings(
+        [item.label, item.title, item.description, *item.aliases],
+        normalized_phrase,
+    )
+
+
+def unique_strings(values: Iterable[str], normalize: Callable[[str], str]) -> list[str]:
+    result: list[str] = []
+    seen: set[str] = set()
+    for value in values:
+        current = normalize(value)
+        if current and current not in seen:
+            result.append(current)
+            seen.add(current)
+    return result
+
+
+def normalize_route(value: str) -> str:
+    return value.strip().casefold()
+
+
+def token_identity(tokens: set[str]) -> str:
+    return "\x1f".join(sorted(tokens))
+
+
+def binding_menu_route(binding: Binding) -> str:
+    if binding.dispatcher.casefold() != "exec":
+        return ""
+    try:
+        fields = shlex.split(binding.argument)
+    except ValueError:
+        return ""
+    if not fields:
+        return ""
+    if Path(fields[0]).name == "omarchy-menu" and len(fields) in {2, 3} and fields[1] in {"toggle", "summon"}:
+        return normalize_route(fields[2] if len(fields) == 3 else "root")
+    if Path(fields[0]).name == "omarchy" and len(fields) in {3, 4} and fields[1:3] in (["menu", "toggle"], ["menu", "summon"]):
+        return normalize_route(fields[3] if len(fields) == 4 else "root")
+    return ""
+
+
+def resolve_menu_route_binding(paths: Paths, bindings: list[Binding], route: str) -> Binding | None:
+    requested = normalize_route(route or "root")
+    menu = load_merged_menu(paths, actions_only=False)
+    owners = identity_owners(menu, menu_routes)
+    if requested == "root":
+        item_id = "root"
+    else:
+        item_ids = owners.get(requested, set())
+        if len(item_ids) != 1:
+            return None
+        item_id = next(iter(item_ids))
+
+    candidates: dict[str, Binding] = {}
+    for binding in bindings:
+        target = binding_menu_route(binding)
+        if not target:
+            continue
+        if target == "root":
+            target_id = "root"
+        else:
+            target_ids = owners.get(target, set())
+            if len(target_ids) != 1:
+                continue
+            target_id = next(iter(target_ids))
+        if target_id == item_id:
+            candidates[binding_action(binding)] = binding
+    return next(iter(candidates.values())) if len(candidates) == 1 else None
+
+
+def unique_binding_candidates(
+    candidates: Iterable[tuple[Binding, str]],
+) -> tuple[Binding | None, str]:
+    unique: dict[int, tuple[Binding, str]] = {}
+    for binding, evidence in candidates:
+        unique[id(binding)] = (binding, evidence)
+    if len(unique) != 1:
+        return None, ""
+    return next(iter(unique.values()))
+
+
+def semantic_operations(*values: str) -> set[str]:
+    words = set().union(*(token_set(value) for value in values))
+    return {SEMANTIC_OPERATION_CLASSES[word] for word in words if word in SEMANTIC_OPERATION_CLASSES}
+
+
+def semantic_operations_match(item: MenuItem, binding: Binding) -> bool:
+    item_operations = semantic_operations(item.id, item.action)
+    binding_operations = semantic_operations(binding.description, binding.argument)
+    return item_operations == binding_operations
+
+
+def match_menu_item(
+    item: MenuItem,
+    bindings: list[Binding],
+    route_owners: dict[str, set[str]],
+    phrase_owners: dict[str, set[str]],
+    token_owners: dict[str, set[str]],
+) -> tuple[Binding | None, str, str]:
     command = normalized_command(item.action)
     if command:
         exact = [binding for binding in bindings if binding.dispatcher == "exec" and normalized_command(binding.argument) == command]
         if len(exact) == 1:
-            return exact[0], "command-exact"
-    if not coachable_namespace(item.id):
-        return None, ""
-    phrases = [item.label, item.title, item.description, *item.aliases]
-    for phrase in phrases:
-        if phrase:
-            for binding in bindings:
-                if normalized_phrase(phrase) == normalized_phrase(binding.description):
-                    return binding, "exact"
-    candidates = strong_semantic_token_sets(item)
-    best_score = 0
-    best: list[Binding] = []
+            return exact[0], "command-exact", "identical exec command"
+
+    route_candidates: list[tuple[Binding, str]] = []
     for binding in bindings:
-        binding_tokens = token_set(binding.description)
-        score = 0
-        for candidate in candidates:
-            if candidate == binding_tokens:
-                score = max(score, 300 + len(candidate))
-        if score > best_score:
-            best_score, best = score, [binding]
-        elif score and score == best_score:
-            best.append(binding)
-    return (best[0], "token-exact") if len(best) == 1 else (None, "")
+        route = binding_menu_route(binding)
+        if route and route_owners.get(route) == {item.id}:
+            route_candidates.append((binding, route))
+    binding, route = unique_binding_candidates(route_candidates)
+    if binding is not None:
+        confidence = "route-id" if route == normalize_route(item.id) else "route-alias"
+        return binding, confidence, f"unique menu route {route!r}"
+
+    phrase_candidates: list[tuple[Binding, str]] = []
+    for phrase in menu_phrases(item):
+        if phrase_owners.get(phrase) != {item.id}:
+            continue
+        for binding in bindings:
+            if normalized_phrase(binding.description) == phrase and semantic_operations_match(item, binding):
+                phrase_candidates.append((binding, phrase))
+    binding, phrase = unique_binding_candidates(phrase_candidates)
+    if binding is not None:
+        return binding, "phrase-exact", f"unique phrase {phrase!r}"
+
+    token_candidates: list[tuple[Binding, str]] = []
+    for tokens in strong_semantic_token_sets(item):
+        identity = token_identity(tokens)
+        if not identity or token_owners.get(identity) != {item.id}:
+            continue
+        for binding in bindings:
+            if token_set(binding.description) == tokens and semantic_operations_match(item, binding):
+                token_candidates.append((binding, " ".join(sorted(tokens))))
+    binding, tokens = unique_binding_candidates(token_candidates)
+    if binding is not None:
+        return binding, "token-exact", f"unique tokens {tokens!r}"
+    return None, "", ""
 
 
 def strong_semantic_token_sets(item: MenuItem) -> list[set[str]]:
@@ -677,10 +1120,6 @@ def strong_semantic_token_sets(item: MenuItem) -> list[set[str]]:
     segments = item.id.split(".")
     values.extend(" ".join(segments[start:]) for start in range(len(segments)))
     return [tokens for value in values if (tokens := token_set(value))]
-
-
-def coachable_namespace(item_id: str) -> bool:
-    return item_id.startswith(("trigger.", "system.", "style."))
 
 
 def normalized_command(value: str) -> str:
@@ -708,6 +1147,84 @@ def action_id(description: str) -> str:
     return "-".join(WORDS_PATTERN.findall(description.lower()))
 
 
+def literal_phrase(value: str) -> str:
+    return " ".join(WORDS_PATTERN.findall(value.casefold()))
+
+
+def binding_command_key(binding: Binding) -> str:
+    dispatcher = binding.dispatcher.strip().casefold()
+    argument = normalized_command(binding.argument)
+    return f"{dispatcher}\0{argument}" if dispatcher and argument else ""
+
+
+def binding_is_workspace_switch(binding: Binding) -> bool:
+    if is_workspace_description(binding.description):
+        return True
+    if binding.dispatcher.casefold() != "lua":
+        return False
+    return bool(re.search(r"hl\.dsp\.focus\s*\(\s*\{[^}]*\bworkspace\s*=", binding.argument))
+
+
+def binding_group_key(binding: Binding, route_owners: dict[str, set[str]] | None = None) -> str:
+    if binding_is_workspace_switch(binding):
+        return "family:workspace-switching"
+    if is_panel_description(binding.description):
+        return "family:bar-panels"
+    route = binding_menu_route(binding)
+    if route and route_owners is not None:
+        if route == "root":
+            return "menu-route:root"
+        owners = route_owners.get(route, set())
+        if len(owners) == 1:
+            return "menu-route:" + next(iter(owners))
+    command = binding_command_key(binding)
+    if command:
+        return "command:" + command
+    return "description:" + literal_phrase(binding.description)
+
+
+def annotate_binding_concepts(bindings: list[Binding], menu: list[MenuItem] | None = None) -> list[Binding]:
+    route_owners = identity_owners(menu, menu_routes) if menu is not None else None
+    groups: dict[str, list[Binding]] = {}
+    for binding in bindings:
+        groups.setdefault(binding_group_key(binding, route_owners), []).append(binding)
+
+    concepts: dict[str, tuple[str, str, list[str]]] = {}
+    for key, members in groups.items():
+        if key == "family:workspace-switching":
+            action, title = "workspace-switching", "Workspace switching"
+        elif key == "family:bar-panels":
+            action, title = "bar-panels", "Bar panels"
+        elif (key.startswith("command:") or key.startswith("menu-route:")) and len(members) > 1:
+            digest = hashlib.sha256(key.encode()).hexdigest()[:12]
+            action, title = f"binding-{digest}", members[0].description
+        else:
+            action, title = action_id(members[0].description), members[0].description
+        shortcuts: list[str] = []
+        for member in members:
+            shortcuts = merge_shortcuts(shortcuts, *member.shortcuts)
+        concepts[key] = action, title, shortcuts
+
+    result: list[Binding] = []
+    for binding in bindings:
+        action, title, shortcuts = concepts[binding_group_key(binding, route_owners)]
+        result.append(dataclasses.replace(
+            binding,
+            shortcuts=shortcuts,
+            concept_action=action,
+            concept_title=title,
+        ))
+    return result
+
+
+def binding_action(binding: Binding) -> str:
+    return binding.concept_action or action_id(binding.description)
+
+
+def binding_title(binding: Binding) -> str:
+    return binding.concept_title or binding.description
+
+
 def strip_managed_block(content: str, start: str, end: str) -> str:
     start_index = content.find(start)
     if start_index < 0:
@@ -726,10 +1243,36 @@ def shell_quote(value: str) -> str:
     return "'" + value.replace("'", "'\\''") + "'"
 
 
-def sensei_lua() -> str:
+def unique_catalog_bindings(catalog: Catalog) -> list[Binding]:
+    result: list[Binding] = []
+    seen: set[str] = set()
+    for binding in [*(match.binding for match in catalog.matches), *catalog.unmatched_bindings]:
+        key = normalized_phrase(binding.description)
+        if key not in seen:
+            result.append(binding)
+            seen.add(key)
+    return result
+
+
+def lua_string(value: str) -> str:
+    return json.dumps(str(value), ensure_ascii=False)
+
+
+def sensei_lua(bindings: list[Binding] | None = None) -> str:
+    concept_lines = []
+    for binding in bindings or []:
+        concept_lines.append(
+            "    [" + lua_string(binding.description) + "] = { action = "
+            + lua_string(binding_action(binding)) + ", title = "
+            + lua_string(binding_title(binding)) + " },"
+        )
+    concept_table = "\n".join(concept_lines)
     return f'''-- Generated by omarchy-sensei setup. Re-run setup instead of editing this file.
 if hl and not _G.omarchy_sensei_original_hl_bind then
   _G.omarchy_sensei_original_hl_bind = hl.bind
+  local coaching_by_description = {{
+{concept_table}
+  }}
   local function slug(value)
     return tostring(value):lower():gsub("[^%w]+", "-"):gsub("^-", ""):gsub("-$", "")
   end
@@ -738,8 +1281,12 @@ if hl and not _G.omarchy_sensei_original_hl_bind then
   end
   local function coaching_identity(description)
     local text = tostring(description or "")
+    local known = coaching_by_description[text]
+    if known then return known.action, known.title end
     if text:match("^Switch to workspace %d+$") or text == "Next workspace"
-      or text == "Previous workspace" or text == "Former workspace" then
+      or text == "Previous workspace" or text == "Former workspace"
+      or text == "Scroll active workspace forward"
+      or text == "Scroll active workspace backward" then
       return "workspace-switching", "Workspace switching"
     end
     if text:match("^Bar panel %d+$") then
@@ -763,6 +1310,48 @@ if hl and not _G.omarchy_sensei_original_hl_bind then
       hl.exec_cmd(command)
     end, options)
   end
+
+  -- Observe only completed left clicks that coincide with a real active-window
+  -- transition. The binding is non-consuming: Hyprland still delivers the
+  -- original click unchanged, and ordinary clicks launch no process.
+  if hl.on and hl.timer and hl.get_active_window then
+    local last_active = ""
+    local pointer_down = nil
+    local recent_focus = nil
+    local pointer_serial = 0
+    local function window_address(window)
+      if not window or not window.address then return "" end
+      return tostring(window.address)
+    end
+    local ok, active = pcall(hl.get_active_window)
+    if ok then last_active = window_address(active) end
+    hl.bind("mouse:272", function()
+      pointer_serial = pointer_serial + 1
+      local serial = pointer_serial
+      pointer_down = {{ serial = serial }}
+      recent_focus = nil
+      hl.timer(function()
+        if pointer_down and pointer_down.serial == serial then pointer_down = nil end
+        if recent_focus and recent_focus.serial == serial then recent_focus = nil end
+      end, {{ timeout = 800, type = "oneshot" }})
+    end, {{ non_consuming = true }})
+    hl.on("window.active", function(window)
+      local next_active = window_address(window)
+      if pointer_down and last_active ~= "" and next_active ~= "" and next_active ~= last_active then
+        recent_focus = {{ from = last_active, to = next_active, serial = pointer_down.serial }}
+      end
+      last_active = next_active
+    end)
+    hl.bind("mouse:272", function()
+      local transition = recent_focus
+      pointer_down = nil
+      recent_focus = nil
+      if transition then
+        hl.exec_cmd("omarchy-sensei coach-focus --from " .. quote(transition.from)
+          .. " --to " .. quote(transition.to))
+      end
+    end, {{ release = true, non_consuming = true }})
+  end
 end
 '''
 
@@ -773,7 +1362,12 @@ def menu_override_block(matches: list[CatalogMatch]) -> str:
         shortcuts = merge_shortcuts(match.binding.shortcuts)
         if not shortcuts:
             continue
-        command = "omarchy-sensei run --action " + shell_quote(action_id(match.binding.description)) + " --title " + shell_quote(match.binding.description) + " --shortcut " + shell_quote(shortcuts[0]) + " -- " + shell_quote(match.menu.action)
+        shortcut_args = "".join(" --shortcut " + shell_quote(shortcut) for shortcut in shortcuts)
+        command = (
+            "omarchy-sensei run --action " + shell_quote(binding_action(match.binding))
+            + " --title " + shell_quote(binding_title(match.binding))
+            + shortcut_args + " -- " + shell_quote(match.menu.action)
+        )
         item = match.menu.to_json()
         # The menu extension uses the map key as the item's id; Omarchy's
         # native override shape intentionally omits a duplicate ``id`` field.
@@ -802,11 +1396,24 @@ def install_binding_cache(paths: Paths, catalog: Catalog) -> None:
 
 def load_binding_cache(path: Path) -> list[Binding]:
     value = json.loads(path.read_text())
-    return [Binding(str(item.get("description", "")), [str(x) for x in item.get("shortcuts", [])], str(item.get("dispatcher", "")), str(item.get("argument", ""))) for item in value]
+    return [Binding(
+        str(item.get("description", "")),
+        [str(x) for x in item.get("shortcuts", [])],
+        str(item.get("dispatcher", "")),
+        str(item.get("argument", "")),
+        str(item.get("conceptAction", "")),
+        str(item.get("conceptTitle", "")),
+    ) for item in value]
 
 
 def binding_with_description(bindings: list[Binding], description: str) -> Binding | None:
     return next((binding for binding in bindings if binding.description.strip().lower() == description.strip().lower()), None)
+
+
+def binding_with_literal_description(bindings: list[Binding], description: str) -> Binding | None:
+    phrase = literal_phrase(description)
+    candidates = [binding for binding in bindings if literal_phrase(binding.description) == phrase]
+    return candidates[0] if len(candidates) == 1 else None
 
 
 def binding_targets_module(binding: Binding, module: str) -> bool:
@@ -824,12 +1431,16 @@ def binding_targets_module(binding: Binding, module: str) -> bool:
     return found_shell and found_action and found_module
 
 
-def resolve_click_binding(bindings: list[Binding], module: str, workspace: int, region: str, panel_index: int) -> Binding | None:
+def resolve_click_binding(bindings: list[Binding], module: str, workspace: int, region: str, panel_index: int, module_title: str = "") -> Binding | None:
     if workspace > 0 and "workspace" in module.lower():
         return binding_with_description(bindings, f"Switch to workspace {workspace}")
     for binding in bindings:
         if binding_targets_module(binding, module):
             return binding
+    if module_title:
+        named = binding_with_literal_description(bindings, module_title)
+        if named is not None:
+            return named
     if region.lower() == "right" and panel_index > 0:
         return binding_with_description(bindings, f"Bar panel {panel_index}")
     return None
@@ -837,11 +1448,21 @@ def resolve_click_binding(bindings: list[Binding], module: str, workspace: int, 
 
 def grouped_click_binding(bindings: list[Binding], workspace: int, binding: Binding) -> Binding:
     if workspace > 0:
-        return Binding("Workspace switching", ["SUPER + TAB"])
+        return Binding(
+            "Workspace switching",
+            ["SUPER + TAB"],
+            concept_action="workspace-switching",
+            concept_title="Workspace switching",
+        )
     if not is_panel_description(binding.description):
         return binding
     hint = binding_with_description(bindings, "Bar panel 1") or binding
-    return dataclasses.replace(hint, description="Bar panels")
+    return dataclasses.replace(
+        hint,
+        description="Bar panels",
+        concept_action="bar-panels",
+        concept_title="Bar panels",
+    )
 
 
 def install_self(paths: Paths) -> None:
@@ -852,7 +1473,7 @@ def install_self(paths: Paths) -> None:
     write_if_changed(paths.local_binary, source.read_bytes(), 0o755)
 
 
-def install_hypr_integration(paths: Paths) -> None:
+def install_hypr_integration(paths: Paths, catalog: Catalog | None = None) -> None:
     content = paths.hyprland_config.read_text()
     clean = strip_managed_block(content, HYPR_START, HYPR_END)
     needle = "-- Load Omarchy defaults."
@@ -864,7 +1485,8 @@ def install_hypr_integration(paths: Paths) -> None:
     block = HYPR_START + '\nrequire("default.hypr.helpers")\nrequire("hypr.sensei")\n' + HYPR_END
     updated = before + "\n\n" + block + "\n\n" + after
     backup_and_write(paths.hyprland_config, updated.encode(), 0o644)
-    write_if_changed(paths.sensei_lua, sensei_lua().encode(), 0o644)
+    bindings = unique_catalog_bindings(catalog) if catalog is not None else []
+    write_if_changed(paths.sensei_lua, sensei_lua(bindings).encode(), 0o644)
 
 
 def install_menu_integration(paths: Paths, catalog: Catalog) -> None:
@@ -927,8 +1549,8 @@ fi
 
 def setup_integration(paths: Paths) -> Catalog:
     install_self(paths)
-    install_hypr_integration(paths)
     catalog = load_catalog(paths)
+    install_hypr_integration(paths, catalog if catalog.matches else None)
     # Quickshell can load the service while Hyprland is still publishing its
     # bindings.  Do not replace a useful catalog with an empty startup result;
     # Service.qml retries ``refresh`` once the compositor is ready.
@@ -943,6 +1565,7 @@ def refresh_integration(paths: Paths) -> Catalog:
     catalog = load_catalog(paths)
     if not catalog.matches:
         raise ValueError("Omarchy bindings are not ready yet")
+    install_hypr_integration(paths, catalog)
     install_menu_integration(paths, catalog)
     install_binding_cache(paths, catalog)
     return catalog
@@ -974,11 +1597,12 @@ def integration_installed(paths: Paths) -> bool:
         return False
 
 
-def resolve_current_shortcuts(title: str, fallback: str) -> list[str]:
+def resolve_current_shortcuts(title: str, fallback: str | list[str]) -> list[str]:
+    fallbacks = [fallback] if isinstance(fallback, str) else fallback
     try:
         output = subprocess.run(["omarchy-menu-keybindings", "--print"], capture_output=True, text=True, check=True).stdout
     except (OSError, subprocess.CalledProcessError):
-        return merge_shortcuts([], fallback)
+        return merge_shortcuts([], *fallbacks)
     shortcuts = []
     for line in output.splitlines():
         if "→" not in line:
@@ -986,7 +1610,7 @@ def resolve_current_shortcuts(title: str, fallback: str) -> list[str]:
         key, action = (part.strip() for part in line.split("→", 1))
         if action.lower() == title.lower():
             shortcuts = merge_shortcuts(shortcuts, key)
-    return merge_shortcuts(shortcuts, fallback)
+    return merge_shortcuts(shortcuts, *fallbacks)
 
 
 def command_complete(paths: Paths, args: list[str]) -> None:
@@ -1001,13 +1625,16 @@ def command_run(paths: Paths, args: list[str]) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--action", required=True)
     parser.add_argument("--title", required=True)
-    parser.add_argument("--shortcut", required=True)
+    parser.add_argument("--shortcut", action="append", required=True)
     value, command = parser.parse_known_args(args)
     if command[:1] == ["--"]:
         command = command[1:]
     if len(command) != 1:
         raise ValueError("run requires one command after --")
-    shortcuts = resolve_current_shortcuts(value.title.strip(), value.shortcut.strip())
+    shortcuts = resolve_current_shortcuts(
+        value.title.strip(),
+        [shortcut.strip() for shortcut in value.shortcut if shortcut.strip()],
+    )
     update_coaching_state(paths, Observation(now_utc(), value.action.strip(), value.title.strip(), "menu", shortcuts[0], shortcuts))
     completed = subprocess.run(["bash", "-lc", command[0]], stdin=sys.stdin, stdout=sys.stdout, stderr=sys.stderr)
     raise SystemExit(completed.returncode)
@@ -1016,6 +1643,7 @@ def command_run(paths: Paths, args: list[str]) -> None:
 def command_coach_click(paths: Paths, args: list[str]) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--module", required=True)
+    parser.add_argument("--module-title", default="")
     parser.add_argument("--workspace", type=int, default=0)
     parser.add_argument("--region", default="")
     parser.add_argument("--panel-index", type=int, default=0)
@@ -1024,32 +1652,315 @@ def command_coach_click(paths: Paths, args: list[str]) -> None:
         bindings = load_binding_cache(paths.binding_cache)
     except (OSError, json.JSONDecodeError):
         return
-    binding = resolve_click_binding(bindings, value.module.strip(), value.workspace, value.region.strip(), value.panel_index)
+    binding = resolve_click_binding(
+        bindings,
+        value.module.strip(),
+        value.workspace,
+        value.region.strip(),
+        value.panel_index,
+        value.module_title.strip(),
+    )
     if binding is None or not binding.shortcuts:
         return
     binding = grouped_click_binding(bindings, value.workspace, binding)
-    update_coaching_state(paths, Observation(now_utc(), action_id(binding.description), binding.description, "mouse", binding.shortcuts[0], binding.shortcuts))
+    update_coaching_state(paths, Observation(
+        now_utc(),
+        binding_action(binding),
+        binding_title(binding),
+        "mouse",
+        binding.shortcuts[0],
+        binding.shortcuts,
+    ))
+
+
+def command_coach_route(paths: Paths, args: list[str]) -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--route", required=True)
+    value = parser.parse_args(args)
+    try:
+        bindings = load_binding_cache(paths.binding_cache)
+        binding = resolve_menu_route_binding(paths, bindings, value.route.strip())
+    except (OSError, json.JSONDecodeError, ValueError):
+        return
+    if binding is None or not binding.shortcuts:
+        return
+    update_coaching_state(paths, Observation(
+        now_utc(),
+        binding_action(binding),
+        binding_title(binding),
+        "menu",
+        binding.shortcuts[0],
+        binding.shortcuts,
+    ))
+
+
+def command_coach_app(paths: Paths, args: list[str]) -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--name", required=True)
+    parser.add_argument("--desktop-id", default="")
+    value = parser.parse_args(args)
+    try:
+        bindings = load_binding_cache(paths.binding_cache)
+    except (OSError, json.JSONDecodeError):
+        return
+    binding, _ = resolve_app_binding(bindings, value.name.strip(), value.desktop_id.strip())
+    if binding is None or not binding.shortcuts:
+        return
+    update_coaching_state(paths, Observation(
+        now_utc(),
+        binding_action(binding),
+        binding_title(binding),
+        "menu",
+        binding.shortcuts[0],
+        binding.shortcuts,
+    ))
+
+
+def normalized_window_address(value: str) -> str:
+    return value.strip().casefold().removeprefix("0x").lstrip("0") or "0"
+
+
+def client_center(client: dict[str, Any]) -> tuple[float, float]:
+    at = client.get("at", [0, 0])
+    size = client.get("size", [0, 0])
+    try:
+        return float(at[0]) + float(size[0]) / 2, float(at[1]) + float(size[1]) / 2
+    except (IndexError, TypeError, ValueError):
+        return 0, 0
+
+
+def resolve_focus_binding(bindings: list[Binding], before: str, after: str, clients: list[dict[str, Any]]) -> Binding | None:
+    by_address = {
+        normalized_window_address(str(client.get("address", ""))): client
+        for client in clients
+        if client.get("address")
+    }
+    previous = by_address.get(normalized_window_address(before))
+    current = by_address.get(normalized_window_address(after))
+    description = "Focus on next window"
+    if previous is not None and current is not None:
+        previous_monitor = previous.get("monitor")
+        current_monitor = current.get("monitor")
+        if previous_monitor != current_monitor:
+            try:
+                description = "Focus on next monitor" if int(current_monitor) > int(previous_monitor) else "Focus on previous monitor"
+            except (TypeError, ValueError):
+                description = "Focus on next monitor"
+        else:
+            previous_x, previous_y = client_center(previous)
+            current_x, current_y = client_center(current)
+            dx, dy = current_x - previous_x, current_y - previous_y
+            if abs(dx) >= abs(dy) and abs(dx) >= 8:
+                description = "Focus on right window" if dx > 0 else "Focus on left window"
+            elif abs(dy) >= 8:
+                description = "Focus on below window" if dy > 0 else "Focus on above window"
+    return binding_with_description(bindings, description)
+
+
+def command_coach_focus(paths: Paths, args: list[str]) -> None:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--from", dest="before", required=True)
+    parser.add_argument("--to", dest="after", required=True)
+    value = parser.parse_args(args)
+    if normalized_window_address(value.before) == normalized_window_address(value.after):
+        return
+    try:
+        bindings = load_binding_cache(paths.binding_cache)
+    except (OSError, json.JSONDecodeError):
+        return
+    clients: list[dict[str, Any]] = []
+    try:
+        process = subprocess.run(["hyprctl", "-j", "clients"], capture_output=True, text=True, timeout=2)
+        decoded = json.loads(process.stdout) if process.returncode == 0 else []
+        if isinstance(decoded, list):
+            clients = decoded
+    except (OSError, subprocess.SubprocessError, json.JSONDecodeError):
+        pass
+    binding = resolve_focus_binding(bindings, value.before, value.after, clients)
+    if binding is None or not binding.shortcuts:
+        return
+    update_coaching_state(paths, Observation(
+        now_utc(),
+        binding_action(binding),
+        "Window focus",
+        "mouse",
+        binding.shortcuts[0],
+        binding.shortcuts,
+    ))
+
+
+def active_bar_modules(paths: Paths) -> list[str]:
+    config = paths.home / ".config" / "omarchy" / "shell.json"
+    try:
+        value = json.loads(config.read_text())
+    except (OSError, json.JSONDecodeError):
+        return []
+    layout = value.get("bar", {}).get("layout", {})
+    result: list[str] = []
+    for region in ("left", "center", "right"):
+        for entry in layout.get(region, []):
+            if isinstance(entry, dict) and entry.get("id"):
+                result.append(str(entry["id"]))
+    return result
+
+
+def installed_plugin_titles(paths: Paths) -> dict[str, str]:
+    roots = [paths.home / ".config" / "omarchy" / "plugins", Path("/usr/share/omarchy/shell/plugins")]
+    result: dict[str, str] = {}
+    for root in roots:
+        try:
+            manifests = root.rglob("manifest.json")
+        except OSError:
+            continue
+        for manifest in manifests:
+            try:
+                value = json.loads(manifest.read_text())
+            except (OSError, json.JSONDecodeError):
+                continue
+            plugin_id = str(value.get("id", ""))
+            bar = value.get("barWidget", {}) if isinstance(value.get("barWidget", {}), dict) else {}
+            title = str(bar.get("displayName") or value.get("name") or "")
+            if plugin_id and title and plugin_id not in result:
+                result[plugin_id] = title
+    return result
+
+
+def app_observed_actions(bindings: list[Binding]) -> dict[str, str]:
+    defaults = default_desktop_roles()
+    actions: dict[str, str] = {}
+    for entry in load_desktop_entries():
+        candidates: list[tuple[int, str, Binding]] = []
+        for binding in bindings:
+            score, evidence = app_binding_score(entry, binding, defaults)
+            if score:
+                candidates.append((score, evidence, binding))
+        if not candidates:
+            continue
+        best = max(score for score, _, _ in candidates)
+        winners: dict[str, tuple[Binding, str]] = {}
+        for score, evidence, binding in candidates:
+            if score == best:
+                winners[binding_action(binding)] = (binding, evidence)
+        if len(winners) == 1:
+            binding, evidence = next(iter(winners.values()))
+            actions[binding_action(binding)] = f"Apps provider: {entry.name!r}, {evidence}"
+    return actions
+
+
+def binding_coverage(paths: Paths, catalog: Catalog) -> dict[str, Any]:
+    bindings = unique_catalog_bindings(catalog)
+    matched = {normalized_phrase(match.binding.description): match for match in catalog.matches}
+    modules = active_bar_modules(paths)
+    titles = installed_plugin_titles(paths)
+    app_actions = app_observed_actions(bindings)
+    rows: list[dict[str, Any]] = []
+    for binding in bindings:
+        key = normalized_phrase(binding.description)
+        status = "matchable-unobserved"
+        source = ""
+        evidence = "structured dispatcher and argument"
+        if key in matched:
+            status, source = "observed", "menu-action"
+            evidence = matched[key].evidence or matched[key].confidence
+        elif binding_is_workspace_switch(binding):
+            status, source, evidence = "observed", "bar-workspace", "workspace semantic identity"
+        elif is_panel_description(binding.description):
+            status, source, evidence = "observed", "bar-panel", "live positional panel identity"
+        elif binding.description in {
+            "Focus on next window",
+            "Focus on next monitor",
+            "Focus on previous monitor",
+            "Focus on below window",
+            "Focus on left window",
+            "Focus on right window",
+            "Focus on above window",
+        }:
+            status, source, evidence = "observed", "compositor-focus", "non-consuming pointer focus transition"
+        else:
+            targeted = next((module for module in modules if binding_targets_module(binding, module)), "")
+            titled = next((module for module in modules if literal_phrase(titles.get(module, "")) == literal_phrase(binding.description)), "")
+            if targeted:
+                status, source, evidence = "observed", "bar-module", f"exact shell module {targeted!r}"
+            elif titled:
+                status, source, evidence = "observed", "bar-manifest", f"exact manifest title for {titled!r}"
+            elif binding_menu_route(binding):
+                resolved = resolve_menu_route_binding(paths, bindings, binding_menu_route(binding))
+                if resolved is not None:
+                    status, source, evidence = "observed", "menu-route", f"unique route {binding_menu_route(binding)!r}"
+            elif binding_action(binding) in app_actions:
+                status, source, evidence = "observed", "apps-provider", app_actions[binding_action(binding)]
+            elif not binding.dispatcher or not binding.argument:
+                status, evidence = "missing-metadata", "Super+K exposes no dispatcher argument"
+            elif binding.dispatcher.casefold() == "sendshortcut":
+                status, evidence = "keyboard-only", "synthetic shortcut has no semantic desktop source"
+        row = binding.to_json()
+        row.update({
+            "status": status,
+            "source": source,
+            "evidence": evidence,
+            "conceptAction": binding_action(binding),
+            "conceptTitle": binding_title(binding),
+        })
+        rows.append(row)
+
+    status_counts: dict[str, int] = {}
+    for row in rows:
+        status_counts[row["status"]] = status_counts.get(row["status"], 0) + 1
+    concepts = {row["conceptAction"] for row in rows}
+    observed_concepts = {row["conceptAction"] for row in rows if row["status"] == "observed"}
+    return {
+        "generatedAt": iso_time(now_utc()),
+        "bindingSource": catalog.binding_source,
+        "bindingGeneratedAt": catalog.binding_generated_at,
+        "bindings": len(rows),
+        "concepts": len(concepts),
+        "observedConcepts": len(observed_concepts),
+        "statusCounts": status_counts,
+        "rows": rows,
+    }
+
+
+def coverage_summary(coverage: dict[str, Any]) -> str:
+    return (
+        f"{coverage['bindings']} bindings / {coverage['concepts']} concepts; "
+        f"{coverage['observedConcepts']} observed concepts"
+    )
 
 
 def print_catalog(paths: Paths, args: list[str]) -> None:
     parser = argparse.ArgumentParser()
     parser.add_argument("--unmatched", action="store_true")
     parser.add_argument("--json", action="store_true")
+    parser.add_argument("--coverage", action="store_true")
     value = parser.parse_args(args)
     catalog = load_catalog(paths)
+    if value.coverage:
+        coverage = binding_coverage(paths, catalog)
+        if value.json:
+            print(json.dumps(coverage, ensure_ascii=False))
+        else:
+            counts = ", ".join(f"{key}={count}" for key, count in sorted(coverage["statusCounts"].items()))
+            print(f"{coverage_summary(coverage)} ({counts})")
+            print(f"Binding source: {coverage['bindingSource']}")
+        return
     if value.json:
         print(json.dumps(catalog.to_json(), ensure_ascii=False))
         return
     if not value.unmatched:
         for match in catalog.matches:
-            print(f"✓ {match.menu.id:<38} → {match.binding.description:<32} {' / '.join(match.binding.shortcuts)}")
+            reason = match.confidence + (f": {match.evidence}" if match.evidence else "")
+            print(f"✓ {match.menu.id:<38} → {match.binding.description:<32} {' / '.join(match.binding.shortcuts)} [{reason}]")
     for item in catalog.unmatched_menu:
         print(f"· {item.id:<38} (no shortcut match for {item.label!r})")
     if value.unmatched:
         for binding in catalog.unmatched_bindings:
             print(f"⌨ {binding.description:<38} (no matching menu action; {' / '.join(binding.shortcuts)})")
     else:
-        print(f"\n{len(catalog.matches)} coached menu actions; {len(catalog.unmatched_menu)} unmatched menu actions; {len(catalog.unmatched_bindings)} shortcut-only actions.")
+        print(
+            f"\n{len(catalog.matches)} menu-leaf matches; "
+            f"{len(catalog.unmatched_menu)} menu leaves without a shortcut; "
+            f"{len(catalog.unmatched_bindings)} bindings without a menu-leaf match."
+        )
 
 
 def doctor(paths: Paths) -> None:
@@ -1070,34 +1981,41 @@ def doctor(paths: Paths) -> None:
         observer = ""
     if "hl.dispatch(dispatcher)" not in observer:
         raise ValueError("generic shortcut observer is not installed")
+    if 'hl.on("window.active"' not in observer or "non_consuming = true" not in observer:
+        raise ValueError("non-consuming pointer focus observer is not installed")
     try:
         bindings = load_binding_cache(paths.binding_cache)
     except (OSError, json.JSONDecodeError):
         bindings = []
     if not bindings:
         raise ValueError("semantic click binding cache is not installed")
+    if any(not binding_action(binding) for binding in bindings):
+        raise ValueError("binding cache contains an action without semantic identity")
     watcher = subprocess.run(["systemctl", "--user", "is-active", "omarchy-sensei-refresh.path"], capture_output=True, text=True)
     if watcher.returncode or watcher.stdout.strip() != "active":
         raise ValueError("catalog refresh watcher is not active")
     config = subprocess.run(["hyprctl", "configerrors"], capture_output=True, text=True)
     if config.returncode or config.stdout.strip():
         raise ValueError("Hyprland reports configuration errors")
-    print(f"Sensei is healthy: {len(catalog.matches)} coached menu actions, {len(catalog.unmatched_menu)} unmatched menu actions, refresh watcher active.")
+    coverage = binding_coverage(paths, catalog)
+    print(f"Sensei is healthy: {coverage_summary(coverage)}, refresh watcher active.")
 
 
 def main(argv: list[str] | None = None) -> int:
     argv = list(sys.argv[1:] if argv is None else argv)
     if not argv:
-        raise ValueError("usage: sensei.py <setup|refresh|catalog|doctor|uninstall|complete|coach-click|run|snapshot|pause|resume|clear|status>")
+        raise ValueError("usage: sensei.py <setup|refresh|catalog|doctor|uninstall|complete|coach-click|coach-route|coach-app|coach-focus|run|snapshot|pause|resume|clear|status>")
     paths = Paths.current()
     command, args = argv[0], argv[1:]
     if command == "setup":
         initialize_state(paths)
         catalog = setup_integration(paths)
-        print(f"Omarchy Sensei coaching is installed ({len(catalog.matches)} coached actions). Run `hyprctl reload` to activate it.")
+        coverage = binding_coverage(paths, catalog)
+        print(f"Omarchy Sensei coaching is installed ({coverage_summary(coverage)}). Run `hyprctl reload` to activate it.")
     elif command == "refresh":
         catalog = refresh_integration(paths)
-        print(f"Sensei catalog refreshed: {len(catalog.matches)} coached menu actions, {len(catalog.unmatched_menu)} unmatched.")
+        coverage = binding_coverage(paths, catalog)
+        print(f"Sensei catalog refreshed: {coverage_summary(coverage)}.")
     elif command == "catalog":
         print_catalog(paths, args)
     elif command == "doctor":
@@ -1109,6 +2027,12 @@ def main(argv: list[str] | None = None) -> int:
         command_complete(paths, args)
     elif command == "coach-click":
         command_coach_click(paths, args)
+    elif command == "coach-route":
+        command_coach_route(paths, args)
+    elif command == "coach-app":
+        command_coach_app(paths, args)
+    elif command == "coach-focus":
+        command_coach_focus(paths, args)
     elif command == "run":
         command_run(paths, args)
     elif command == "snapshot":
