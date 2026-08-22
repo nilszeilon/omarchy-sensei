@@ -120,7 +120,60 @@ class SenseiTests(unittest.TestCase):
         self.assertEqual(len(backups), 1)
         self.assertEqual(backups[0].read_text(), "secret command\n")
         self.assertEqual(stat.S_IMODE(backups[0].stat().st_mode), 0o600)
-        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o644)
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o600)
+
+    def test_managed_integration_writes_are_idempotent(self):
+        self.paths.hyprland_config.write_text(
+            "-- User configuration\n\n\n-- Load Omarchy defaults.\nrequire(\"default.hypr.omarchy\")\n"
+        )
+        self.paths.menu_extension.write_text("{\n  // User menu entries go here.\n\n\n}\n")
+        menu = sensei.MenuItem(
+            "trigger.audit", "trigger", "", "", "Audit", "", "", "audit-command", [], "", ""
+        )
+        catalog = sensei.Catalog(
+            [sensei.CatalogMatch(menu, sensei.Binding("Audit", ["SUPER + A", "SUPER ALT + A"]), "command-exact")],
+            [],
+            [],
+        )
+
+        reordered = sensei.Catalog(
+            [sensei.CatalogMatch(menu, sensei.Binding("Audit", ["SUPER ALT + A", "SUPER + A"]), "command-exact")],
+            [],
+            [],
+        )
+        sensei.install_hypr_integration(self.paths)
+        sensei.install_menu_integration(self.paths, reordered)
+        first_hyprland = self.paths.hyprland_config.read_bytes()
+        first_menu = self.paths.menu_extension.read_bytes()
+        first_observer_inode = self.paths.sensei_lua.stat().st_ino
+
+        sensei.install_hypr_integration(self.paths)
+        sensei.install_menu_integration(self.paths, catalog)
+
+        self.assertEqual(self.paths.hyprland_config.read_bytes(), first_hyprland)
+        self.assertEqual(self.paths.menu_extension.read_bytes(), first_menu)
+        self.assertNotIn("\n\n\n", self.paths.hyprland_config.read_text())
+        self.assertNotIn("\n\n\n", self.paths.menu_extension.read_text())
+        self.assertNotIn("\n  ,\n", self.paths.menu_extension.read_text())
+        self.assertEqual(self.paths.sensei_lua.stat().st_ino, first_observer_inode)
+
+    def test_menu_integration_preserves_existing_entry_without_trailing_comma(self):
+        self.paths.menu_extension.write_text(
+            '{\n  "personal.action": {"label": "Personal", "action": "personal-command"}\n}\n'
+        )
+        menu = sensei.MenuItem(
+            "trigger.audit", "trigger", "", "", "Audit", "", "", "audit-command", [], "", ""
+        )
+        catalog = sensei.Catalog(
+            [sensei.CatalogMatch(menu, sensei.Binding("Audit", ["SUPER + A"]), "command-exact")],
+            [],
+            [],
+        )
+
+        sensei.install_menu_integration(self.paths, catalog)
+
+        items = sensei.parse_menu_jsonc(self.paths.menu_extension.read_text())
+        self.assertEqual([item.id for item in items], ["personal.action", "trigger.audit"])
 
     def test_pause_resume_clear_and_diagnostic_snapshot(self):
         at = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)

@@ -2,11 +2,11 @@
 
 Sensei is a small state machine. A recognized mouse or menu action opens one task, further slow uses increment it, and the matching shortcut removes it. A later slow use opens it again. Each update is applied under a file lock and atomically writes `state.json`, so simultaneous shortcut and click processes cannot overwrite one another.
 
-The durable state is only a lifetime shortcut total and unresolved tasks. It does not contain a stream of past actions. A bounded, sub-second guard prevents one physical shortcut from counting twice and prevents a shortcut-routed menu command from immediately reopening its task. The panel's regular refresh prunes expired guards.
+The durable state is only a lifetime shortcut total and unresolved tasks. It does not contain a stream of past actions. A bounded, sub-second guard prevents one physical shortcut from counting twice and prevents a shortcut-routed menu command from immediately reopening its task. The next coaching or diagnostic state update prunes expired guards.
 
 Equivalent habits share one identity. Numbered, next, previous, and former workspace actions become `workspace-switching`. Positional `Bar panel N` actions become `bar-panels`. Directly named panels retain their own identity, so a positional panel shortcut cannot accidentally complete a named Bluetooth, Audio, or Network task.
 
-The Quickshell panel renders the lifetime level plus open tasks and refreshes every two seconds. Tasks are ordered by descending slow-use count, with the oldest task first when counts tie. The bounded list follows its keyboard cursor and supports arrows plus `h/j/k/l`. The required behavior itself is the completion action.
+The Quickshell panel renders the lifetime level plus open tasks and watches the compact state directory with native `FileView` notifications, so it does not poll or keep Python resident. Tasks are ordered by descending slow-use count, with the oldest task first when counts tie. The bounded list follows its keyboard cursor and supports arrows plus `h/j/k/l`. The required behavior itself is the completion action.
 
 The level is derived directly from the aggregate shortcut total. Level 1 requires 10 uses; each next per-level requirement is `ceil(previous × 1.5)`. Shortcut callbacks arriving within 100ms are treated as one physical use without retaining the chord. The level card is read-only and does not alter coaching tasks.
 

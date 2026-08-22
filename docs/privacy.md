@@ -6,7 +6,7 @@ Sensei persists only what the product displays or needs to finish its coaching l
 - Currently open tasks
 - For each task: its semantic action name, current shortcut hints, offender count, and opening time
 
-`state.json` can also contain a sub-second routing guard with semantic action IDs and timestamps. It expires after one second and is removed on the next panel refresh or coaching update. Shortcut chords are not passed to or stored by the shortcut observer.
+`state.json` can also contain a sub-second routing guard with semantic action IDs and timestamps. It expires after one second and is removed on the next coaching or diagnostic state update. Shortcut chords are not passed to or stored by the shortcut observer.
 
 Sensei does not store an action history, individual shortcut uses, typed characters, raw keycodes, pointer coordinates, commands, content, clipboard data, screenshots, or credentials. Clicks are accepted only from known Omarchy bar controls and matched locally to an existing keyboard action. Unmatched clicks are discarded.
 

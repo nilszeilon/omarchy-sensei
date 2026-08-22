@@ -187,6 +187,20 @@ def write_atomic(path: Path, data: bytes, mode: int) -> None:
         temporary.unlink(missing_ok=True)
 
 
+def write_if_changed(path: Path, data: bytes, mode: int) -> None:
+    try:
+        current = path.read_bytes()
+        current_mode = stat.S_IMODE(path.stat().st_mode)
+    except FileNotFoundError:
+        current = None
+        current_mode = None
+    if current == data:
+        if current_mode != mode:
+            path.chmod(mode)
+        return
+    write_atomic(path, data, mode)
+
+
 def backup_and_write(path: Path, data: bytes, mode: int) -> None:
     try:
         original_mode = stat.S_IMODE(path.stat().st_mode)
@@ -201,7 +215,7 @@ def backup_and_write(path: Path, data: bytes, mode: int) -> None:
         stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
         backup = path.with_name(f"{path.name}.sensei-backup-{stamp}")
         write_atomic(backup, current, original_mode)
-    write_atomic(path, data, mode)
+    write_atomic(path, data, original_mode if original_mode is not None else mode)
 
 
 def load_state_file(path: Path) -> tuple[SenseiState, bool]:
@@ -453,7 +467,7 @@ def merge_shortcuts(existing: Iterable[str] | None, *additions: str) -> list[str
         if value and key not in seen:
             result.append(value)
             seen.add(key)
-    return result
+    return sorted(result, key=lambda value: (len(canonical_shortcut(value).split()), canonical_shortcut(value)))
 
 
 def observation_shortcuts(observation: Observation) -> list[str]:
@@ -756,9 +770,10 @@ end
 def menu_override_block(matches: list[CatalogMatch]) -> str:
     lines = []
     for match in matches:
-        if not match.binding.shortcuts:
+        shortcuts = merge_shortcuts(match.binding.shortcuts)
+        if not shortcuts:
             continue
-        command = "omarchy-sensei run --action " + shell_quote(action_id(match.binding.description)) + " --title " + shell_quote(match.binding.description) + " --shortcut " + shell_quote(match.binding.shortcuts[0]) + " -- " + shell_quote(match.menu.action)
+        command = "omarchy-sensei run --action " + shell_quote(action_id(match.binding.description)) + " --title " + shell_quote(match.binding.description) + " --shortcut " + shell_quote(shortcuts[0]) + " -- " + shell_quote(match.menu.action)
         item = match.menu.to_json()
         # The menu extension uses the map key as the item's id; Omarchy's
         # native override shape intentionally omits a duplicate ``id`` field.
@@ -781,7 +796,8 @@ def install_binding_cache(paths: Paths, catalog: Catalog) -> None:
         if key not in seen:
             bindings.append(binding)
             seen.add(key)
-    write_atomic(paths.binding_cache, (json.dumps([item.to_json() for item in bindings], ensure_ascii=False) + "\n").encode(), 0o600)
+    bindings.sort(key=lambda binding: normalized_phrase(binding.description))
+    write_if_changed(paths.binding_cache, (json.dumps([item.to_json() for item in bindings], ensure_ascii=False) + "\n").encode(), 0o600)
 
 
 def load_binding_cache(path: Path) -> list[Binding]:
@@ -833,7 +849,7 @@ def install_self(paths: Paths) -> None:
     if paths.local_binary.exists() and source == paths.local_binary.resolve():
         return
     paths.local_binary.parent.mkdir(parents=True, exist_ok=True)
-    write_atomic(paths.local_binary, source.read_bytes(), 0o755)
+    write_if_changed(paths.local_binary, source.read_bytes(), 0o755)
 
 
 def install_hypr_integration(paths: Paths) -> None:
@@ -843,10 +859,12 @@ def install_hypr_integration(paths: Paths) -> None:
     index = clean.find(needle)
     if index < 0:
         raise ValueError("could not find the Omarchy defaults marker in hyprland.lua")
-    block = HYPR_START + '\nrequire("default.hypr.helpers")\nrequire("hypr.sensei")\n' + HYPR_END + "\n\n"
-    updated = clean[:index] + block + clean[index:]
+    before = clean[:index].rstrip()
+    after = clean[index:].lstrip()
+    block = HYPR_START + '\nrequire("default.hypr.helpers")\nrequire("hypr.sensei")\n' + HYPR_END
+    updated = before + "\n\n" + block + "\n\n" + after
     backup_and_write(paths.hyprland_config, updated.encode(), 0o644)
-    write_atomic(paths.sensei_lua, sensei_lua().encode(), 0o644)
+    write_if_changed(paths.sensei_lua, sensei_lua().encode(), 0o644)
 
 
 def install_menu_integration(paths: Paths, catalog: Catalog) -> None:
@@ -859,14 +877,16 @@ def install_menu_integration(paths: Paths, catalog: Catalog) -> None:
     if open_index < 0 or close_index <= open_index:
         raise ValueError("menu extension is not a JSONC object")
     block = menu_override_block(catalog.matches)
+    before = clean[:close_index].rstrip()
+    after = clean[close_index:].lstrip()
+    active_body = "\n".join(
+        line for line in clean[open_index + 1:close_index].splitlines()
+        if not line.strip().startswith("//")
+    ).strip()
     separator = ""
-    for char in reversed(clean[open_index + 1:close_index]):
-        if char.isspace():
-            continue
-        if char != ",":
-            separator = "  ,\n"
-        break
-    updated = clean[:close_index] + "\n  " + MENU_START + "\n" + separator + block + "  " + MENU_END + "\n" + clean[close_index:]
+    if active_body and not active_body.endswith(","):
+        separator = "\n  ,"
+    updated = before + separator + "\n\n  " + MENU_START + "\n" + block + "  " + MENU_END + "\n" + after
     backup_and_write(paths.menu_extension, updated.encode(), 0o644)
 
 
