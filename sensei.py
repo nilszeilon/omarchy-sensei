@@ -189,14 +189,18 @@ def write_atomic(path: Path, data: bytes, mode: int) -> None:
 
 def backup_and_write(path: Path, data: bytes, mode: int) -> None:
     try:
+        original_mode = stat.S_IMODE(path.stat().st_mode)
         current = path.read_bytes()
     except FileNotFoundError:
         current = None
+        original_mode = None
     if current == data:
         return
     if current is not None:
+        assert original_mode is not None
         stamp = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-        path.with_name(f"{path.name}.sensei-backup-{stamp}").write_bytes(current)
+        backup = path.with_name(f"{path.name}.sensei-backup-{stamp}")
+        write_atomic(backup, current, original_mode)
     write_atomic(path, data, mode)
 
 

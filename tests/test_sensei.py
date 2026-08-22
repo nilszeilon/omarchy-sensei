@@ -2,6 +2,8 @@ import datetime as dt
 import contextlib
 import io
 import json
+import os
+import stat
 import sys
 import tempfile
 import unittest
@@ -102,6 +104,23 @@ class SenseiTests(unittest.TestCase):
                 sensei.refresh_integration(self.paths)
 
         self.assertEqual(self.paths.binding_cache.read_text(), previous)
+
+    def test_backup_preserves_private_file_mode_with_permissive_umask(self):
+        target = Path(self.temp.name) / "private.conf"
+        target.write_text("secret command\n")
+        target.chmod(0o600)
+
+        previous_umask = os.umask(0o000)
+        try:
+            sensei.backup_and_write(target, b"replacement\n", 0o644)
+        finally:
+            os.umask(previous_umask)
+
+        backups = list(target.parent.glob("private.conf.sensei-backup-*"))
+        self.assertEqual(len(backups), 1)
+        self.assertEqual(backups[0].read_text(), "secret command\n")
+        self.assertEqual(stat.S_IMODE(backups[0].stat().st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(target.stat().st_mode), 0o644)
 
     def test_pause_resume_clear_and_diagnostic_snapshot(self):
         at = dt.datetime(2026, 1, 1, tzinfo=dt.timezone.utc)
