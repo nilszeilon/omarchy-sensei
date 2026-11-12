@@ -315,6 +315,18 @@ class SenseiTests(unittest.TestCase):
         self.assertIn("--shortcut 'SUPER SHIFT CTRL + SPACE'", generated)
         self.assertIn("'choose-theme'", generated)
 
+    def test_menu_override_preserves_provider(self):
+        # The "apps" item has both an action and a provider. Overriding it
+        # without the provider drops installed apps from root menu search.
+        item = sensei.parse_menu_jsonc_all(
+            '{"apps": {"label": "Apps", "provider": "apps", "action": "omarchy-shell omarchy.dock apps"}}'
+        )[0]
+        binding = sensei.Binding("Apps", ["SUPER ALT + SPACE"], "exec", "omarchy-shell omarchy.dock apps")
+
+        generated = sensei.menu_override_block([sensei.CatalogMatch(item, binding, "command-exact")])
+
+        self.assertEqual(json.loads("{" + generated.rstrip().rstrip(",") + "}")["apps"]["provider"], "apps")
+
     def test_menu_wrapper_uses_shared_concept_identity(self):
         item = self.menu_item("system.power", "Power", "poweroff")
         binding = sensei.annotate_binding_concepts([
