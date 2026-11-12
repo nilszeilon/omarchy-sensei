@@ -512,10 +512,11 @@ class MenuItem:
     aliases: list[str]
     when: str
     checked: str
+    provider: str = ""
 
     def to_json(self) -> dict[str, Any]:
         value: dict[str, Any] = {"id": self.id, "parent": self.parent, "label": self.label, "action": self.action}
-        for key, field in (("icon", "icon"), ("iconFont", "icon_font"), ("title", "title"), ("description", "description"), ("when", "when"), ("checked", "checked")):
+        for key, field in (("icon", "icon"), ("iconFont", "icon_font"), ("title", "title"), ("description", "description"), ("when", "when"), ("checked", "checked"), ("provider", "provider")):
             current = getattr(self, field)
             if current:
                 value[key] = current
@@ -812,7 +813,7 @@ def parse_menu_jsonc_all(data: str) -> list[MenuItem]:
         if value.get("parent") is not None:
             parent = value["parent"]
         label = value.get("label") or item_id
-        result.append(MenuItem(item_id, parent, value.get("icon", ""), value.get("iconFont", ""), label, value.get("title", ""), value.get("description", ""), value.get("action", ""), decode_aliases(value.get("aliases")), value.get("when", ""), value.get("checked", "")))
+        result.append(MenuItem(item_id, parent, value.get("icon", ""), value.get("iconFont", ""), label, value.get("title", ""), value.get("description", ""), value.get("action", ""), decode_aliases(value.get("aliases")), value.get("when", ""), value.get("checked", ""), value.get("provider", "")))
     return result
 
 
